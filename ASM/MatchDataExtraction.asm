@@ -117,7 +117,11 @@ bl sendByteExi #send OnFrameUpdate event code
 
 lis	r3,0x8047
 lwz	r3,-0x493C(r3) #load match frame count
-bl sendWordExi
+bl sendWordExi #0
+
+lis r3,0x804D
+lwz	r3,0x5F90(r3) #load random seed
+bl sendWordExi #4
 
 li r30, 0 #load player count
 
@@ -135,36 +139,36 @@ beq FU_INCREMENT
 
 mr r31, r3 #load player address into r31
 
-lwz	r3,0x64(r31) #load internal char ID
-bl sendByteExi
+#lwz	r3,0x64(r31) #load internal char ID
+#bl sendByteExi #8
 lwz	r3,0x70(r31) #load action state ID
-bl sendHalfExi
+bl sendHalfExi #9
 lwz	r3,0x110(r31) #load Top-N X coord
-bl sendWordExi
+bl sendWordExi #11
 lwz	r3,0x114(r31) #load Top-N Y coord
-bl sendWordExi
+bl sendWordExi #15
 lwz	r3,0x680(r31) #load Joystick X axis
-bl sendWordExi
+bl sendWordExi #19
 lwz	r3,0x684(r31) #load Joystick Y axis
-bl sendWordExi
+bl sendWordExi #23
 lwz	r3,0x698(r31) #load c-stick X axis
-bl sendWordExi
+bl sendWordExi #27
 lwz	r3,0x69c(r31) #load c-stick Y axis
-bl sendWordExi
+bl sendWordExi #31
 lwz	r3,0x6b0(r31) #load analog trigger input
-bl sendWordExi
+bl sendWordExi #35
 lwz	r3,0x6bc(r31) #load buttons pressed this frame
-bl sendWordExi
+bl sendWordExi #39
 lwz	r3,0x1890(r31) #load current damage
-bl sendWordExi
+bl sendWordExi #43
 lwz	r3,0x19f8(r31) #load shield size
-bl sendWordExi
+bl sendWordExi #47
 lwz	r3,0x20ec(r31) #load last attack landed
-bl sendByteExi
+bl sendByteExi #51
 lhz	r3,0x20f0(r31) #load combo count
-bl sendByteExi
+bl sendByteExi #52
 lwz	r3,0x1924(r31) #load player who last hit this player
-bl sendByteExi
+bl sendByteExi #53
 
 FU_INCREMENT:
 addi r30, r30, 1
