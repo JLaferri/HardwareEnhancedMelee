@@ -21,7 +21,7 @@ ori r10, r10, 0xFF
 sth r10, 0x4010(r11) # disable MP3 memory protection
 
 #set up EXI
-li r10, 0xD0 #bit pattern to set clock to 1 MHz and enable CS for device 0
+li r10, 0xD0 #bit pattern to set clock to 32 MHz and enable CS for device 0
 stw	r10, 0x6814(r11) #start transfer, write to parameter register
 
 blr
@@ -193,6 +193,8 @@ increment:
 addi r30,r30,1
 cmpwi r30,4
 blt loopPlayers
+
+bl endExiTransfer #close transfer
 
 #restore registers and sp
 lwz r0, 0x24(r1)
