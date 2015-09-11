@@ -139,8 +139,8 @@ beq FU_INCREMENT
 
 mr r31, r3 #load player address into r31
 
-#lwz	r3,0x64(r31) #load internal char ID
-#bl sendByteExi #8
+lwz	r3,0x64(r31) #load internal char ID
+bl sendByteExi #8
 lwz	r3,0x70(r31) #load action state ID
 bl sendHalfExi #9
 lwz	r3,0x110(r31) #load Top-N X coord
@@ -200,7 +200,7 @@ ori r10, r10, 0xFF
 sth r10, 0x4010(r11) # disable MP3 memory protection
 
 #set up EXI
-li r10, 0xC0 #bit pattern to set clock to 16 MHz and enable CS for device 0
+li r10, 0xD0 #bit pattern to set clock to 32 MHz and enable CS for device 0
 stw	r10, 0x6814(r11) #start transfer, write to parameter register
 
 blr
@@ -275,11 +275,21 @@ blr
 #  description: stops port B writes
 #***************************************************************************
 endExiTransfer:
+mflr r0
+stw r0, 0x4(r1)
+stwu r1,-0x20(r1)
+#TEMPORARY: Send dummy byte at the end of message so fpga can write out last good byte
+li r3, 0xFF
+bl sendByteExi
+
 lis r11, 0xCC00 #top bytes of address of EXI registers
 
 li r10, 0
 stw	r10, 0x6814(r11) #write 0 to the parameter register
 
+lwz r0, 0x24(r1)
+addi r1, r1, 0x20
+mtlr r0
 blr
 
 GECKO_END:

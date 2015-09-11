@@ -59,3 +59,4 @@ typedef struct {
   int bytesRead;
   uint8_t data[MSG_BUFFER_SIZE]; //No event should pass more than 1024 bytes
 } RfifoMessage;
+

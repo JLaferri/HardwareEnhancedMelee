@@ -67,32 +67,47 @@ uint8_t rfifoPopByte() {
   //Acknowledge the read
   digitalWrite(ACK_PIN, HIGH);
   digitalWrite(ACK_PIN, LOW);
-  
+
   return read;
 }
 
 void rfifoReadMessage() {
   Msg = { false, 0, 0, 0, 0 };
+  uint8_t byteNum;
   
-  //Wait until data is available in the queue
-  do { rfifoReadPins(); } while(!rfifoDataAvailable());
+  do {
+    //Wait until data is available in the queue
+    do { rfifoReadPins(); } while(!rfifoDataAvailable());
   
-  //There is now data in the queue, the first byte should always be the event code byte, read it
-  Msg.eventCode = rfifoPopByte();
+    //First byte popped is the num
+    byteNum = rfifoPopByte();
+  
+    //Wait until data is available in the queue
+    do { rfifoReadPins(); } while(!rfifoDataAvailable());
+    
+    //There is now data in the queue, the first byte should always be the event code byte, read it
+    Msg.eventCode = rfifoPopByte();
+  } while(byteNum != 0);
   
   //Get the expected message size for this event
   Msg.messageSize = asmEvents[Msg.eventCode];
   if (Msg.messageSize <= 0) return; //If message size for this event is zero, it is not a valid event, return a false success message
 
   for (int i = 0; i < Msg.messageSize; i++) {
-    rfifoReadPins();
-    
-    //If there is no data available in the queue we can assume message transmission has completed and we missed at least one byte
-	  //this works because the GC writes to the queue faster than we can read from it, by the time one byte is read there should be another ready
-    if (!rfifoDataAvailable()) return;
-    
+    //Wait until data is available in the queue
+    do { rfifoReadPins(); } while(!rfifoDataAvailable());
+    uint8_t newByteNum = rfifoPopByte();
+    //Wait until data is available in the queue
+    do { rfifoReadPins(); } while(!rfifoDataAvailable());
+    uint8_t readValue = rfifoPopByte();
+
+    //Given one of these conditions, something went wrong
+    if (newByteNum == 0 || newByteNum < byteNum || i != (newByteNum - 1)) return;
+
+    byteNum = newByteNum;
+
     //Load byte into buffer
-    Msg.data[i] = rfifoPopByte();
+    Msg.data[i] = readValue;
 	
 	  //Keep track of the number of bytes read (this is in case we miss reads we will know how many we did successfully read)
 	  Msg.bytesRead = i + 1;
@@ -107,35 +122,46 @@ void rfifoReadMessage() {
 #define GAME_START_PLAYER_FRAME_BYTES 4;
 #define UPDATE_PLAYER_FRAME_BYTES 46
 
-Game CurrentGame;
+Game CurrentGame = { };
 
-void handleGameStart(uint8_t data[]) {
+void handleGameStart() {
+  uint8_t* data = Msg.data;
+  
   //Reset CurrentGame variable
   CurrentGame = { };
 
+//  Serial.println("Hello");
+//  //Debug
+//  for (int i = 0; i < 0xA; i++) {
+//    Serial.print(Msg.data[i], HEX);
+//    Serial.print(" ");
+//  }
+  
   //Load stage ID
-  CurrentGame.stage = *(uint16_t*)(&data[0]);
+  CurrentGame.stage = data[0] << 8 | data[1];
 
   for (int i = 0; i < PLAYER_COUNT; i++) {
-    Player p = CurrentGame.players[i];
+    Player* p = &CurrentGame.players[i];
     int offset = i * GAME_START_PLAYER_FRAME_BYTES;
 
     //Load player data
-    p.controllerPort = data[2 + offset];
-    p.characterId = data[3 + offset];
-    p.playerType = data[4 + offset];
-    p.characterColor = data[5 + offset];
+    p->controllerPort = data[2 + offset];
+    p->characterId = data[3 + offset];
+    p->playerType = data[4 + offset];
+    p->characterColor = data[5 + offset];
   }
 }
 
-void handleUpdate(uint8_t data[]) {
+void handleUpdate() {
+  uint8_t* data = Msg.data;
+  
   //Check frame count and see if any frames were skipped
-  uint32_t frameCount = *(uint32_t*)(&data[0]);
+  uint32_t frameCount = data[0] << 24 | data[1] << 16 | data[2] << 8 | data[3];
   int framesMissed = frameCount - CurrentGame.frameCounter - 1;
   CurrentGame.framesMissed += framesMissed;
   CurrentGame.frameCounter = frameCount;
 
-  CurrentGame.randomSeed = *(uint32_t*)(&data[4]);
+  CurrentGame.randomSeed = *(uint32_t*)(&Msg.data[4]);
 
   for (int i = 0; i < PLAYER_COUNT; i++) {
     Player p = CurrentGame.players[i];
@@ -146,29 +172,29 @@ void handleUpdate(uint8_t data[]) {
     
     //Load player data
     p.currentFrameData = { };
-    p.currentFrameData.internalCharacterId = data[8 + offset];
-    p.currentFrameData.animation = *(uint16_t*)(&data[9 + offset]);
-    p.currentFrameData.locationX = *(float*)(&data[11 + offset]);
-    p.currentFrameData.locationY = *(float*)(&data[15 + offset]);
+    p.currentFrameData.internalCharacterId = Msg.data[8 + offset];
+    p.currentFrameData.animation = *(uint16_t*)(&Msg.data[9 + offset]);
+    p.currentFrameData.locationX = *(float*)(&Msg.data[11 + offset]);
+    p.currentFrameData.locationY = *(float*)(&Msg.data[15 + offset]);
 
     //Controller information
-    p.currentFrameData.joystickX = *(float*)(&data[19 + offset]);
-    p.currentFrameData.joystickY = *(float*)(&data[23 + offset]);
-    p.currentFrameData.cstickX = *(float*)(&data[27 + offset]);
-    p.currentFrameData.cstickY = *(float*)(&data[31 + offset]);
-    p.currentFrameData.trigger = *(float*)(&data[35 + offset]);
-    p.currentFrameData.buttons = *(uint32_t*)(&data[39 + offset]);
+    p.currentFrameData.joystickX = *(float*)(&Msg.data[19 + offset]);
+    p.currentFrameData.joystickY = *(float*)(&Msg.data[23 + offset]);
+    p.currentFrameData.cstickX = *(float*)(&Msg.data[27 + offset]);
+    p.currentFrameData.cstickY = *(float*)(&Msg.data[31 + offset]);
+    p.currentFrameData.trigger = *(float*)(&Msg.data[35 + offset]);
+    p.currentFrameData.buttons = *(uint32_t*)(&Msg.data[39 + offset]);
 
     //More data
-    p.currentFrameData.percent = *(float*)(&data[43 + offset]);
-    p.currentFrameData.shieldSize = *(float*)(&data[47 + offset]);
-    p.currentFrameData.lastMoveHitId = data[51 + offset];
-    p.currentFrameData.comboCount = data[52 + offset];
-    p.currentFrameData.lastHitBy = data[53 + offset];
+    p.currentFrameData.percent = *(float*)(&Msg.data[43 + offset]);
+    p.currentFrameData.shieldSize = *(float*)(&Msg.data[47 + offset]);
+    p.currentFrameData.lastMoveHitId = Msg.data[51 + offset];
+    p.currentFrameData.comboCount = Msg.data[52 + offset];
+    p.currentFrameData.lastHitBy = Msg.data[53 + offset];
   }
 }
 
-void handleGameEnd(uint8_t data[]) {
+void handleGameEnd() {
   //TODO: define
 }
 
@@ -186,13 +212,20 @@ void setup() {
 //*                             Debug
 //**********************************************************************
 void debugPrintMatchParams() {
-  Serial.println("Player A:");
-  Serial.print("Port: "); Serial.println(CurrentGame.players[0].controllerPort + 1, DEC);
-  Serial.println("Character: " + String(externalCharacterNames[CurrentGame.players[0].characterId]));
+  Serial.println(String("Stage: (") + CurrentGame.stage + String(") ") + String(stages[CurrentGame.stage]));
+  for (int i = 0; i < PLAYER_COUNT; i++) {
+    Serial.println(String("Player ") + (char)(65 + i));
+    Serial.print("Port: "); Serial.println(CurrentGame.players[i].controllerPort + 1, DEC);
+    Serial.println(String("Character: (") + CurrentGame.players[i].characterId + String(") ") + String(externalCharacterNames[CurrentGame.players[i].characterId]));
+    Serial.println(String("Color: (") + CurrentGame.players[i].characterColor + String(") ") + String(colors[CurrentGame.players[i].characterColor]));
+  }
 }
 
 void debugPrintGameInfo() {
-  
+  if (CurrentGame.frameCounter % 600 == 0) {
+    Serial.println(String("Frame: ") + CurrentGame.frameCounter);
+    Serial.println(String("Frames missed: ") + CurrentGame.framesMissed);
+  }
 }
 
 //**********************************************************************
@@ -205,16 +238,20 @@ void loop() {
   if (Msg.success) {
     switch (Msg.eventCode) {
       case EVENT_GAME_START:
-        handleGameStart(Msg.data);
+        handleGameStart();
         debugPrintMatchParams();
         break;
       case EVENT_UPDATE:
-        handleUpdate(Msg.data);
+        handleUpdate();
         debugPrintGameInfo();
         break;
       case EVENT_GAME_END:
-        handleGameEnd(Msg.data);
+        handleGameEnd();
         break;
     }
+  } else {
+    Serial.print("Failed to read message. Bytes read: ");
+    Serial.println(Msg.bytesRead);
   }
 }
+

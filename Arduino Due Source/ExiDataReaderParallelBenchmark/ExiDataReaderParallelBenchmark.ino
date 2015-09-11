@@ -31,7 +31,7 @@ void setup() {
 
 byte num, mosi;
 byte values[256];
-int count;
+int count, bytesRead = 0;
 
 long lastEnteredLoop;
 bool logTime = false;
@@ -63,7 +63,7 @@ void loop() {
 
       count = 0;
     }
-
+    bytesRead++;
     logTime = true;
   }
   else
@@ -71,10 +71,12 @@ void loop() {
     long loopTime = micros();
 
     if (logTime) {
+      Serial.print(bytesRead); Serial.print("\t");
       Serial.println(loopTime - lastEnteredLoop);
       logTime = false;
     }
 
+    bytesRead = 0;
     lastEnteredLoop = loopTime;
   }
 }

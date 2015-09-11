@@ -14,13 +14,26 @@ void setup() {
 
   digitalWrite(49, LOW);
   
-//  word portC = PIOC->PIO_PDSR;
-//
-//  Serial.println(portC, BIN);
+  //Empty the FPGA buffer on startup
+  while((PIOC->PIO_PDSR & EMPTY_BIT_MASK) == 0) {
+    digitalWrite(49, HIGH);
+    digitalWrite(49, LOW);
+  }
 }
 
 byte num, mosi, miso;
-int count;
+int count, byteCount = 0;
+byte buf[1024];
+byte present[1024];
+
+bool printed = false;
+
+void PrintHex8(byte num) // prints 8-bit data in hex with leading zeroes
+{
+  char tmp[16];
+  sprintf(tmp, "%.2X",num); 
+  Serial.print(tmp);
+}
 
 void loop() {
   //Read port C
@@ -30,30 +43,46 @@ void loop() {
   if((portC & EMPTY_BIT_MASK) == 0)
   {
     //Read current value
-    if (count == 0) num = (byte)(portC >> 1);
+    if (count == 0) {
+      byte newNum = (byte)(portC >> 1);
+      if (newNum < num) {
+        for (int i = 0; i <= num; i++) present[i] = 0; //Clear previous buf values
+      }
+      num = newNum;
+    }
     else if (count == 1) mosi = (byte)(portC >> 1);
 
     //Acknowledge the read
     digitalWrite(49, HIGH);
     digitalWrite(49, LOW);
+
+    present[num] = 1;
+    buf[num] = mosi;
     
     count++;
+    if (count > 1) count = 0;
 
-    if (count > 1)
+    printed = false;
+  } else {
+    if (!printed)
     {
-      Serial.print(num, HEX);
-      Serial.print(" ");
-      Serial.println(mosi, HEX);
+      Serial.print("("); PrintHex8(num); Serial.print(") ");
+      for (int i = 0; i <= num; i++) {
+        PrintHex8(i); Serial.print(" ");
+      }
+      Serial.println();
 
-      count = 0;
+      Serial.print("("); PrintHex8(num); Serial.print(") ");
+      for (int i = 0; i <= num; i++) {
+        if (present[i] == 1) {
+          PrintHex8(buf[i]); Serial.print(" ");
+        } else {
+          Serial.print("NN ");
+        }
+      }
+      Serial.println();
+      
+      printed = true;
     }
-    //Read current value
-//    byte value = (byte)(portC >> 1);
-//
-//    //Acknowledge the read
-//    digitalWrite(49, HIGH);
-//    digitalWrite(49, LOW);
-//    
-//    Serial.println(value, HEX);
   }
 }
