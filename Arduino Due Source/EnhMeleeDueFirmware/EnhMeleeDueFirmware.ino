@@ -78,15 +78,11 @@ void rfifoReadMessage() {
   do {
     //Wait until data is available in the queue
     do { rfifoReadPins(); } while(!rfifoDataAvailable());
-  
-    //First byte popped is the num
-    byteNum = rfifoPopByte();
+    byteNum = rfifoPopByte(); //First byte popped is the num
   
     //Wait until data is available in the queue
     do { rfifoReadPins(); } while(!rfifoDataAvailable());
-    
-    //There is now data in the queue, the first byte should always be the event code byte, read it
-    Msg.eventCode = rfifoPopByte();
+    Msg.eventCode = rfifoPopByte(); //if byteNum is zero, this will be the event code
   } while(byteNum != 0);
   
   //Get the expected message size for this event
@@ -96,10 +92,11 @@ void rfifoReadMessage() {
   for (int i = 0; i < Msg.messageSize; i++) {
     //Wait until data is available in the queue
     do { rfifoReadPins(); } while(!rfifoDataAvailable());
-    uint8_t newByteNum = rfifoPopByte();
+    uint8_t newByteNum = rfifoPopByte(); //Get byte index
+    
     //Wait until data is available in the queue
     do { rfifoReadPins(); } while(!rfifoDataAvailable());
-    uint8_t readValue = rfifoPopByte();
+    uint8_t readValue = rfifoPopByte(); //Get byte value
 
     //Given one of these conditions, something went wrong
     if (newByteNum == 0 || newByteNum < byteNum || i != (newByteNum - 1)) return;
@@ -124,6 +121,19 @@ void rfifoReadMessage() {
 
 Game CurrentGame = { };
 
+uint16_t readHalf(uint8_t* a) {
+  return a[0] << 8 | a[1];
+}
+
+uint32_t readWord(uint8_t* a) {
+  return a[0] << 24 | a[1] << 16 | a[2] << 8 | a[3];
+}
+
+float readFloat(uint8_t* a) {
+  uint32_t bytes = readWord(a);
+  return *(float*)(&bytes);
+}
+
 void handleGameStart() {
   uint8_t* data = Msg.data;
   
@@ -138,7 +148,7 @@ void handleGameStart() {
 //  }
   
   //Load stage ID
-  CurrentGame.stage = data[0] << 8 | data[1];
+  CurrentGame.stage = readHalf(&data[0]);;
 
   for (int i = 0; i < PLAYER_COUNT; i++) {
     Player* p = &CurrentGame.players[i];
@@ -156,12 +166,12 @@ void handleUpdate() {
   uint8_t* data = Msg.data;
   
   //Check frame count and see if any frames were skipped
-  uint32_t frameCount = data[0] << 24 | data[1] << 16 | data[2] << 8 | data[3];
+  uint32_t frameCount = readWord(&data[0]);
   int framesMissed = frameCount - CurrentGame.frameCounter - 1;
   CurrentGame.framesMissed += framesMissed;
   CurrentGame.frameCounter = frameCount;
 
-  CurrentGame.randomSeed = *(uint32_t*)(&Msg.data[4]);
+  CurrentGame.randomSeed = readWord(&data[4]);
 
   for (int i = 0; i < PLAYER_COUNT; i++) {
     Player p = CurrentGame.players[i];
@@ -172,25 +182,25 @@ void handleUpdate() {
     
     //Load player data
     p.currentFrameData = { };
-    p.currentFrameData.internalCharacterId = Msg.data[8 + offset];
-    p.currentFrameData.animation = *(uint16_t*)(&Msg.data[9 + offset]);
-    p.currentFrameData.locationX = *(float*)(&Msg.data[11 + offset]);
-    p.currentFrameData.locationY = *(float*)(&Msg.data[15 + offset]);
+    p.currentFrameData.internalCharacterId = data[8 + offset];
+    p.currentFrameData.animation = readHalf(&data[9 + offset]);
+    p.currentFrameData.locationX = readFloat(&data[11 + offset]);
+    p.currentFrameData.locationY = readFloat(&data[15 + offset]);
 
     //Controller information
-    p.currentFrameData.joystickX = *(float*)(&Msg.data[19 + offset]);
-    p.currentFrameData.joystickY = *(float*)(&Msg.data[23 + offset]);
-    p.currentFrameData.cstickX = *(float*)(&Msg.data[27 + offset]);
-    p.currentFrameData.cstickY = *(float*)(&Msg.data[31 + offset]);
-    p.currentFrameData.trigger = *(float*)(&Msg.data[35 + offset]);
-    p.currentFrameData.buttons = *(uint32_t*)(&Msg.data[39 + offset]);
+    p.currentFrameData.joystickX = readFloat(&data[19 + offset]);
+    p.currentFrameData.joystickY = readFloat(&data[23 + offset]);
+    p.currentFrameData.cstickX = readFloat(&data[27 + offset]);
+    p.currentFrameData.cstickY = readFloat(&data[31 + offset]);
+    p.currentFrameData.trigger = readFloat(&data[35 + offset]);
+    p.currentFrameData.buttons = readWord(&data[39 + offset]);
 
     //More data
-    p.currentFrameData.percent = *(float*)(&Msg.data[43 + offset]);
-    p.currentFrameData.shieldSize = *(float*)(&Msg.data[47 + offset]);
-    p.currentFrameData.lastMoveHitId = Msg.data[51 + offset];
-    p.currentFrameData.comboCount = Msg.data[52 + offset];
-    p.currentFrameData.lastHitBy = Msg.data[53 + offset];
+    p.currentFrameData.percent = readFloat(&data[43 + offset]);
+    p.currentFrameData.shieldSize = readFloat(&data[47 + offset]);
+    p.currentFrameData.lastMoveHitId = data[51 + offset];
+    p.currentFrameData.comboCount = data[52 + offset];
+    p.currentFrameData.lastHitBy = data[53 + offset];
   }
 }
 
