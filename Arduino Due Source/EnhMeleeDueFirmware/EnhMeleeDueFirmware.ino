@@ -1,3 +1,7 @@
+#include <SPI.h>
+#include <Ethernet.h>
+#include <ArduinoJson.h>
+
 #include "enhmelee.h"
 #include "meleeids.h"
 
@@ -174,33 +178,35 @@ void handleUpdate() {
   CurrentGame.randomSeed = readWord(&data[4]);
 
   for (int i = 0; i < PLAYER_COUNT; i++) {
-    Player p = CurrentGame.players[i];
+    Player* p = &CurrentGame.players[i];
     int offset = i * UPDATE_PLAYER_FRAME_BYTES;
 
     //Change over previous frame data
-    p.previousFrameData = p.currentFrameData;
-    
+    p->previousFrameData = p->currentFrameData;
+
+    PlayerFrameData* pfd = &p->currentFrameData;
+
     //Load player data
-    p.currentFrameData = { };
-    p.currentFrameData.internalCharacterId = data[8 + offset];
-    p.currentFrameData.animation = readHalf(&data[9 + offset]);
-    p.currentFrameData.locationX = readFloat(&data[11 + offset]);
-    p.currentFrameData.locationY = readFloat(&data[15 + offset]);
+    *pfd = { };
+    pfd->internalCharacterId = data[8 + offset];
+    pfd->animation = readHalf(&data[9 + offset]);
+    pfd->locationX = readFloat(&data[11 + offset]);
+    pfd->locationY = readFloat(&data[15 + offset]);
 
     //Controller information
-    p.currentFrameData.joystickX = readFloat(&data[19 + offset]);
-    p.currentFrameData.joystickY = readFloat(&data[23 + offset]);
-    p.currentFrameData.cstickX = readFloat(&data[27 + offset]);
-    p.currentFrameData.cstickY = readFloat(&data[31 + offset]);
-    p.currentFrameData.trigger = readFloat(&data[35 + offset]);
-    p.currentFrameData.buttons = readWord(&data[39 + offset]);
+    pfd->joystickX = readFloat(&data[19 + offset]);
+    pfd->joystickY = readFloat(&data[23 + offset]);
+    pfd->cstickX = readFloat(&data[27 + offset]);
+    pfd->cstickY = readFloat(&data[31 + offset]);
+    pfd->trigger = readFloat(&data[35 + offset]);
+    pfd->buttons = readWord(&data[39 + offset]);
 
     //More data
-    p.currentFrameData.percent = readFloat(&data[43 + offset]);
-    p.currentFrameData.shieldSize = readFloat(&data[47 + offset]);
-    p.currentFrameData.lastMoveHitId = data[51 + offset];
-    p.currentFrameData.comboCount = data[52 + offset];
-    p.currentFrameData.lastHitBy = data[53 + offset];
+    pfd->percent = readFloat(&data[43 + offset]);
+    pfd->shieldSize = readFloat(&data[47 + offset]);
+    pfd->lastMoveHitId = data[51 + offset];
+    pfd->comboCount = data[52 + offset];
+    pfd->lastHitBy = data[53 + offset];
   }
 }
 
@@ -209,11 +215,121 @@ void handleGameEnd() {
 }
 
 //**********************************************************************
+//*                           Ethernet
+//**********************************************************************
+#define LED_PIN 13
+
+// the media access control (ethernet hardware) address for the shield:
+byte mac[] = { 0x90, 0xA2, 0xDA, 0x0F, 0x70, 0x6C };
+IPAddress server(192, 168, 0, 2);
+int port = 3636;
+
+EthernetClient client;
+
+void ethernetInitialize() {
+  pinMode(LED_PIN, OUTPUT);
+
+  Serial.println("Attempting to obtain IP address from DHCP");
+  
+  // start the Ethernet connection:
+  if (Ethernet.begin(mac) == 0) {
+    Serial.println("Failed to configure Ethernet using DHCP");
+    return;
+  }
+
+  Serial.print("Obtained IP address: "); Serial.println(Ethernet.localIP());
+  postConnectedMessage();
+}
+
+void ethernetConnect() {
+  Serial.print("Trying to connect to: "); Serial.println(server);
+  int code = client.connect(server, port);
+  if (code) {
+    Serial.println("Connected to server!");
+    postConnectedMessage();
+  } else {
+    Serial.print("Failed to connect to server. Code: "); Serial.println(code);
+  }
+}
+
+int ethernetCheckConnection() {
+  //Checks if connection is working. If it isn't, attempt to reconnect.
+  if(!client) {
+    ethernetInitialize();
+    return -1;
+  }
+
+//  if (!client.connected()) {
+//    Ethernet.maintain();
+//    ethernetConnect();
+//    return -2;
+//  }
+
+  Ethernet.maintain();
+  return 1;
+}
+
+void blinkEndlessly(uint32_t msDelay) {
+  for(;;) {
+     digitalWrite(LED_PIN, HIGH);
+     delay(msDelay);
+     digitalWrite(LED_PIN, LOW);
+     delay(msDelay);
+  }
+}
+
+//**********************************************************************
+//*                           JSON
+//**********************************************************************
+void postMatchParameters() {
+  if (client.connect(server, port)) {
+    //Create JSON
+    StaticJsonBuffer<400> jsonBuffer;
+  
+    JsonObject& root = jsonBuffer.createObject();
+    root["stage"] = CurrentGame.stage;
+  
+    JsonArray& data = root.createNestedArray("players");
+    for (int i = 0; i < PLAYER_COUNT; i++) {
+      Player* p = &CurrentGame.players[i];
+      JsonObject& item = jsonBuffer.createObject();
+      
+      item["port"] = p->controllerPort + 1;
+      item["character"] = p->characterId;
+      item["color"] = p->characterColor;
+      item["type"] = p->playerType;
+  
+      data.add(item);
+    }
+  
+    root.printTo(client);
+    client.println();
+    client.stop();
+  }
+}
+
+void postConnectedMessage() {
+  if (client.connect(server, port)) {    
+    //Create JSON
+    StaticJsonBuffer<200> jsonBuffer;
+  
+    JsonObject& root = jsonBuffer.createObject();
+    JsonArray& macBytes = root.createNestedArray("mac");
+    for (int i = 0; i < sizeof(mac); i++) macBytes.add(mac[i]);
+  
+    root.printTo(client);
+    client.println();
+    client.stop();
+  }
+}
+
+//**********************************************************************
 //*                             Setup
 //**********************************************************************
 void setup() {
   Serial.begin(250000);
-  
+
+  ethernetInitialize();
   asmEventsInitialize();
   rfifoInitialize();
 }
@@ -224,10 +340,11 @@ void setup() {
 void debugPrintMatchParams() {
   Serial.println(String("Stage: (") + CurrentGame.stage + String(") ") + String(stages[CurrentGame.stage]));
   for (int i = 0; i < PLAYER_COUNT; i++) {
+    Player* p = &CurrentGame.players[i];
     Serial.println(String("Player ") + (char)(65 + i));
-    Serial.print("Port: "); Serial.println(CurrentGame.players[i].controllerPort + 1, DEC);
-    Serial.println(String("Character: (") + CurrentGame.players[i].characterId + String(") ") + String(externalCharacterNames[CurrentGame.players[i].characterId]));
-    Serial.println(String("Color: (") + CurrentGame.players[i].characterColor + String(") ") + String(colors[CurrentGame.players[i].characterColor]));
+    Serial.print("Port: "); Serial.println(p->controllerPort + 1, DEC);
+    Serial.println(String("Character: (") + p->characterId + String(") ") + String(externalCharacterNames[p->characterId]));
+    Serial.println(String("Color: (") + p->characterColor + String(") ") + String(colors[p->characterColor]));
   }
 }
 
@@ -235,6 +352,14 @@ void debugPrintGameInfo() {
   if (CurrentGame.frameCounter % 600 == 0) {
     Serial.println(String("Frame: ") + CurrentGame.frameCounter);
     Serial.println(String("Frames missed: ") + CurrentGame.framesMissed);
+    Serial.print("Random seed: "); Serial.println(CurrentGame.randomSeed, HEX);
+    for (int i = 0; i < PLAYER_COUNT; i++) {
+      Player* p = &CurrentGame.players[i];
+      PlayerFrameData* pfd = &p->currentFrameData;
+      Serial.println(String("Player ") + (char)(65 + i));
+      Serial.print("Location X: "); Serial.println(pfd->locationX);
+      Serial.print("Location Y: "); Serial.println(pfd->locationY);
+    }
   }
 }
 
@@ -242,26 +367,30 @@ void debugPrintGameInfo() {
 //*                           Main Loop
 //**********************************************************************
 void loop() {
-  //read a message from the read fifo - this function doesn't return until data has been read
-  rfifoReadMessage();
-  
-  if (Msg.success) {
-    switch (Msg.eventCode) {
-      case EVENT_GAME_START:
-        handleGameStart();
-        debugPrintMatchParams();
-        break;
-      case EVENT_UPDATE:
-        handleUpdate();
-        debugPrintGameInfo();
-        break;
-      case EVENT_GAME_END:
-        handleGameEnd();
-        break;
+  //If ethernet client not working, attempt to re-establish
+  if (ethernetCheckConnection()) {
+    //read a message from the read fifo - this function doesn't return until data has been read
+    rfifoReadMessage();
+    
+    if (Msg.success) {
+      switch (Msg.eventCode) {
+        case EVENT_GAME_START:
+          handleGameStart();
+          //debugPrintMatchParams();
+          postMatchParameters();
+          break;
+        case EVENT_UPDATE:
+          handleUpdate();
+          //debugPrintGameInfo();
+          break;
+        case EVENT_GAME_END:
+          handleGameEnd();
+          break;
+      }
+    } else {
+      Serial.print("Failed to read message. Bytes read: ");
+      Serial.println(Msg.bytesRead);
     }
-  } else {
-    Serial.print("Failed to read message. Bytes read: ");
-    Serial.println(Msg.bytesRead);
   }
 }
 

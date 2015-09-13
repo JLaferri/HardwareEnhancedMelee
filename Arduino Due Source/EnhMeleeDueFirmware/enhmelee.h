@@ -28,6 +28,18 @@ typedef struct {
 } PlayerFrameData;
 
 typedef struct {
+  //Recovery
+  bool isRecovering = false;
+  uint8_t framesSinceLanding;
+} PlayerFlags;
+
+typedef struct {
+  uint32_t framesAboveOthers; //Assuming if you are higher, you are in a worse position
+  uint32_t framesClosestCenter; //Assuming if you are closer to center, you are controlling the stage
+  
+} PlayerStatistics;
+
+typedef struct {
   //Static data
   uint8_t characterId;
   uint8_t characterColor;
@@ -35,8 +47,12 @@ typedef struct {
   uint8_t controllerPort;
 
   //Update data
-  PlayerFrameData previousFrameData;
   PlayerFrameData currentFrameData;
+
+  //Used for statistic calculation
+  PlayerFrameData previousFrameData;
+  PlayerFlags flags;
+  
 } Player;
 
 typedef struct {
