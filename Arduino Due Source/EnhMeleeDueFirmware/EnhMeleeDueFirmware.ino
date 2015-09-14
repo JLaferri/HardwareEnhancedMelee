@@ -16,8 +16,8 @@ int asmEvents[256];
 
 void asmEventsInitialize() {
   asmEvents[EVENT_GAME_START] = 0xA;
-  asmEvents[EVENT_UPDATE] = 0x64;
-  asmEvents[EVENT_GAME_END] = 0x0;
+  asmEvents[EVENT_UPDATE] = 0x66;
+  asmEvents[EVENT_GAME_END] = 0x1;
 }
 
 //**********************************************************************
@@ -121,7 +121,7 @@ void rfifoReadMessage() {
 //*                         Event Handlers
 //**********************************************************************
 #define GAME_START_PLAYER_FRAME_BYTES 4;
-#define UPDATE_PLAYER_FRAME_BYTES 46
+#define UPDATE_PLAYER_FRAME_BYTES 47
 
 Game CurrentGame = { };
 
@@ -207,17 +207,21 @@ void handleUpdate() {
     pfd->lastMoveHitId = data[51 + offset];
     pfd->comboCount = data[52 + offset];
     pfd->lastHitBy = data[53 + offset];
+    pfd->stocks = data[54 + offset];
   }
 }
 
 void handleGameEnd() {
-  //TODO: define
+  uint8_t* data = Msg.data;
+
+  CurrentGame.winCondition = data[0];
 }
 
 //**********************************************************************
 //*                           Ethernet
 //**********************************************************************
 #define LED_PIN 13
+#define DELAY_TIME 10000
 
 // the media access control (ethernet hardware) address for the shield:
 byte mac[] = { 0x90, 0xA2, 0xDA, 0x0F, 0x70, 0x6C };
@@ -234,11 +238,13 @@ void ethernetInitialize() {
   // start the Ethernet connection:
   if (Ethernet.begin(mac) == 0) {
     Serial.println("Failed to configure Ethernet using DHCP");
+    delay(DELAY_TIME);
     return;
   }
 
   Serial.print("Obtained IP address: "); Serial.println(Ethernet.localIP());
-  postConnectedMessage();
+
+  ethernetConnect();
 }
 
 void ethernetConnect() {
@@ -249,21 +255,24 @@ void ethernetConnect() {
     postConnectedMessage();
   } else {
     Serial.print("Failed to connect to server. Code: "); Serial.println(code);
+    delay(DELAY_TIME);
   }
 }
 
 int ethernetCheckConnection() {
   //Checks if connection is working. If it isn't, attempt to reconnect.
   if(!client) {
+	  client.stop();
     ethernetInitialize();
     return -1;
   }
 
-//  if (!client.connected()) {
-//    Ethernet.maintain();
-//    ethernetConnect();
-//    return -2;
-//  }
+  if (!client.connected()) {
+    client.stop();
+    Ethernet.maintain();
+    ethernetConnect();
+    return -2;
+  }
 
   Ethernet.maintain();
   return 1;
@@ -282,7 +291,7 @@ void blinkEndlessly(uint32_t msDelay) {
 //*                           JSON
 //**********************************************************************
 void postMatchParameters() {
-  if (client.connect(server, port)) {
+  if (client.connected()) {
     //Create JSON
     StaticJsonBuffer<400> jsonBuffer;
   
@@ -304,12 +313,11 @@ void postMatchParameters() {
   
     root.printTo(client);
     client.println();
-    client.stop();
   }
 }
 
 void postConnectedMessage() {
-  if (client.connect(server, port)) {    
+  if (client.connected()) {    
     //Create JSON
     StaticJsonBuffer<200> jsonBuffer;
   
@@ -319,8 +327,92 @@ void postConnectedMessage() {
   
     root.printTo(client);
     client.println();
-    client.stop();
   }
+}
+
+void postGameEndMessage() {
+  if (client.connected()) {
+    StaticJsonBuffer<800> jsonBuffer;
+    
+    JsonObject& root = jsonBuffer.createObject();
+    root["frames"] = CurrentGame.frameCounter;
+    root["winCondition"] = CurrentGame.winCondition;
+
+    float totalFramesClosestCenter = float(CurrentGame.players[0].stats.framesClosestCenter + CurrentGame.players[1].stats.framesClosestCenter);
+    
+    JsonArray& data = root.createNestedArray("players");
+    for (int i = 0; i < PLAYER_COUNT; i++) {
+      PlayerStatistics& ps = CurrentGame.players[i].stats;
+      JsonObject& item = jsonBuffer.createObject();
+
+      item["averageDistanceFromCenter"] = ps.averageDistanceFromCenter;
+      item["percentTimeClosestCenter"] = 100 * (float(ps.framesClosestCenter) / totalFramesClosestCenter);
+
+      JsonArray& stocks = item.createNestedArray("stocks");
+      for (int j = 0; j < STOCK_COUNT; j++) {
+          StockStatistics& ss = ps.stocks[j];
+          JsonObject& stock = jsonBuffer.createObject();
+
+          uint32_t stockFrames = ss.frame;
+          if (j > 0) stockFrames -= ps.stocks[j - 1].frame;
+          
+          stock["timeSeconds"] = float(stockFrames) / 60; 
+          stock["percent"] = ss.percent;
+          stock["moveKilledBy"] = ss.killedBy;
+
+          stocks.add(stock);
+      }
+      
+      data.add(item);
+    }
+
+    root.printTo(client);
+    client.println();
+  }
+}
+
+//**********************************************************************
+//*                            Statistics
+//**********************************************************************
+void computeStatistics() {
+	if (CurrentGame.frameCounter < HUMAN_CONTROL_FRAME) return;
+	
+	uint32_t framesSinceStart = CurrentGame.frameCounter - HUMAN_CONTROL_FRAME;
+	
+	Player* p1 = &CurrentGame.players[0];
+	Player* p2 = &CurrentGame.players[1];
+	PlayerFrameData* p1cfd = &p1->currentFrameData;
+	PlayerFrameData* p2cfd = &p2->currentFrameData;
+	PlayerFrameData* p1pfd = &p1->previousFrameData;
+	PlayerFrameData* p2pfd = &p2->previousFrameData;
+	PlayerStatistics* p1stats = &p1->stats;
+	PlayerStatistics* p2stats = &p2->stats;
+	
+	float p1CenterDistance = sqrt(pow(p1cfd->locationX, 2) + pow(p1cfd->locationY, 2));
+	float p2CenterDistance = sqrt(pow(p2cfd->locationX, 2) + pow(p2cfd->locationY, 2));
+	
+	p1stats->averageDistanceFromCenter = (framesSinceStart*p1stats->averageDistanceFromCenter + p1CenterDistance) / (framesSinceStart + 1);
+	p2stats->averageDistanceFromCenter = (framesSinceStart*p2stats->averageDistanceFromCenter + p2CenterDistance) / (framesSinceStart + 1);
+	
+	//Increment frame counter of person who is closest to center. If the players are even distances from the center, do not increment
+	if (p1CenterDistance < p2CenterDistance) p1stats->framesClosestCenter++;
+	else if (p2CenterDistance < p1CenterDistance) p2stats->framesClosestCenter++;
+
+	//Check if a stock has ended
+	if (p1pfd->stocks - p1cfd->stocks > 0 && p1cfd->stocks < STOCK_COUNT) {
+		StockStatistics& s = p1stats->stocks[STOCK_COUNT - p1pfd->stocks];
+		s.frame = CurrentGame.frameCounter;
+		s.percent = p1pfd->percent;
+		s.killedBy = p2pfd->lastMoveHitId;
+	}
+	
+	//Check p2 for a death
+	if (p2pfd->stocks - p2cfd->stocks > 0 && p2cfd->stocks < STOCK_COUNT) {
+		StockStatistics& s = p2stats->stocks[STOCK_COUNT - p2pfd->stocks];
+		s.frame = CurrentGame.frameCounter;
+		s.percent = p2pfd->percent;
+		s.killedBy = p1pfd->lastMoveHitId;
+	}
 }
 
 //**********************************************************************
@@ -359,6 +451,8 @@ void debugPrintGameInfo() {
       Serial.println(String("Player ") + (char)(65 + i));
       Serial.print("Location X: "); Serial.println(pfd->locationX);
       Serial.print("Location Y: "); Serial.println(pfd->locationY);
+      Serial.print("Stocks: "); Serial.println(pfd->stocks);
+      Serial.print("Percent: "); Serial.println(pfd->percent);
     }
   }
 }
@@ -375,16 +469,19 @@ void loop() {
     if (Msg.success) {
       switch (Msg.eventCode) {
         case EVENT_GAME_START:
+		  //TODO: Check stock count and number of players here
           handleGameStart();
-          //debugPrintMatchParams();
+          debugPrintMatchParams();
           postMatchParameters();
           break;
         case EVENT_UPDATE:
           handleUpdate();
-          //debugPrintGameInfo();
+          debugPrintGameInfo();
+          computeStatistics();
           break;
         case EVENT_GAME_END:
           handleGameEnd();
+          postGameEndMessage();
           break;
       }
     } else {
@@ -393,4 +490,5 @@ void loop() {
     }
   }
 }
+
 

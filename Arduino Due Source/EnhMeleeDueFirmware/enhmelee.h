@@ -2,6 +2,7 @@
 #include <stdio.h>
 
 #define PLAYER_COUNT 2
+#define STOCK_COUNT 4
 #define MAX_FRAMES 28800
 #define MSG_BUFFER_SIZE 1024
 
@@ -11,6 +12,7 @@ typedef struct {
   uint16_t animation;
   float locationX;
   float locationY;
+  uint8_t stocks;
   float percent;
   float shieldSize;
   uint8_t lastMoveHitId;
@@ -34,9 +36,23 @@ typedef struct {
 } PlayerFlags;
 
 typedef struct {
+	uint32_t frame;
+	float percent;
+	uint8_t killedBy;
+	uint8_t deathDirection;
+} StockStatistics;
+
+typedef struct {
+  //Positional
   uint32_t framesAboveOthers; //Assuming if you are higher, you are in a worse position
   uint32_t framesClosestCenter; //Assuming if you are closer to center, you are controlling the stage
+  float averageDistanceFromCenter;
   
+  //Recovery
+  uint16_t recoveryAttempts;
+  uint16_t successfulRecoveries;
+  
+  StockStatistics stocks[STOCK_COUNT];
 } PlayerStatistics;
 
 typedef struct {
@@ -52,7 +68,7 @@ typedef struct {
   //Used for statistic calculation
   PlayerFrameData previousFrameData;
   PlayerFlags flags;
-  
+  PlayerStatistics stats;
 } Player;
 
 typedef struct {
@@ -75,4 +91,5 @@ typedef struct {
   int bytesRead;
   uint8_t data[MSG_BUFFER_SIZE]; //No event should pass more than 1024 bytes
 } RfifoMessage;
+
 
