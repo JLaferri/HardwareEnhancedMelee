@@ -3,7 +3,6 @@
 #include <ArduinoJson.h>
 
 #include "enhmelee.h"
-#include "meleeids.h"
 
 //**********************************************************************
 //*                         ASM Event Codes
@@ -332,13 +331,14 @@ void postConnectedMessage() {
 
 void postGameEndMessage() {
   if (client.connected()) {
-    StaticJsonBuffer<800> jsonBuffer;
+    StaticJsonBuffer<1000> jsonBuffer;
     
     JsonObject& root = jsonBuffer.createObject();
     root["frames"] = CurrentGame.frameCounter;
+    root["activeFrames"] = CurrentGame.frameCounter - HUMAN_CONTROL_FRAME;
     root["winCondition"] = CurrentGame.winCondition;
 
-    float totalFramesClosestCenter = float(CurrentGame.players[0].stats.framesClosestCenter + CurrentGame.players[1].stats.framesClosestCenter);
+    float totalActiveGameFrames = float(CurrentGame.frameCounter - HUMAN_CONTROL_FRAME);
     
     JsonArray& data = root.createNestedArray("players");
     for (int i = 0; i < PLAYER_COUNT; i++) {
@@ -346,21 +346,27 @@ void postGameEndMessage() {
       JsonObject& item = jsonBuffer.createObject();
 
       item["averageDistanceFromCenter"] = ps.averageDistanceFromCenter;
-      item["percentTimeClosestCenter"] = 100 * (float(ps.framesClosestCenter) / totalFramesClosestCenter);
-
+      item["percentTimeClosestCenter"] = 100 * (ps.framesClosestCenter / totalActiveGameFrames);
+      item["percentTimeAboveOthers"] = 100 * (ps.framesAboveOthers / totalActiveGameFrames);
+      item["percentTimeInShield"] = 100 * (ps.framesInShield / totalActiveGameFrames);
+      
       JsonArray& stocks = item.createNestedArray("stocks");
       for (int j = 0; j < STOCK_COUNT; j++) {
           StockStatistics& ss = ps.stocks[j];
-          JsonObject& stock = jsonBuffer.createObject();
-
-          uint32_t stockFrames = ss.frame;
-          if (j > 0) stockFrames -= ps.stocks[j - 1].frame;
           
-          stock["timeSeconds"] = float(stockFrames) / 60; 
-          stock["percent"] = ss.percent;
-          stock["moveKilledBy"] = ss.killedBy;
+          //Only log the stock if the player actually played that stock
+          if (ss.isStockUsed) {
+            JsonObject& stock = jsonBuffer.createObject();
 
-          stocks.add(stock);
+            uint32_t stockFrames = ss.frame;
+            if (j > 0) stockFrames -= ps.stocks[j - 1].frame;
+            
+            stock["timeSeconds"] = float(stockFrames) / 60; 
+            stock["percent"] = ss.percent;
+            stock["moveLastHitBy"] = ss.lastHitBy;
+
+            stocks.add(stock);
+          }
       }
       
       data.add(item);
@@ -378,41 +384,44 @@ void computeStatistics() {
 	if (CurrentGame.frameCounter < HUMAN_CONTROL_FRAME) return;
 	
 	uint32_t framesSinceStart = CurrentGame.frameCounter - HUMAN_CONTROL_FRAME;
+  
+	Player* p = CurrentGame.players;
 	
-	Player* p1 = &CurrentGame.players[0];
-	Player* p2 = &CurrentGame.players[1];
-	PlayerFrameData* p1cfd = &p1->currentFrameData;
-	PlayerFrameData* p2cfd = &p2->currentFrameData;
-	PlayerFrameData* p1pfd = &p1->previousFrameData;
-	PlayerFrameData* p2pfd = &p2->previousFrameData;
-	PlayerStatistics* p1stats = &p1->stats;
-	PlayerStatistics* p2stats = &p2->stats;
+	float p1CenterDistance = sqrt(pow(p[0].currentFrameData.locationX, 2) + pow(p[0].currentFrameData.locationY, 2));
+	float p2CenterDistance = sqrt(pow(p[1].currentFrameData.locationX, 2) + pow(p[1].currentFrameData.locationY, 2));
 	
-	float p1CenterDistance = sqrt(pow(p1cfd->locationX, 2) + pow(p1cfd->locationY, 2));
-	float p2CenterDistance = sqrt(pow(p2cfd->locationX, 2) + pow(p2cfd->locationY, 2));
-	
-	p1stats->averageDistanceFromCenter = (framesSinceStart*p1stats->averageDistanceFromCenter + p1CenterDistance) / (framesSinceStart + 1);
-	p2stats->averageDistanceFromCenter = (framesSinceStart*p2stats->averageDistanceFromCenter + p2CenterDistance) / (framesSinceStart + 1);
+	p[0].stats.averageDistanceFromCenter = (framesSinceStart*p[0].stats.averageDistanceFromCenter + p1CenterDistance) / (framesSinceStart + 1);
+	p[1].stats.averageDistanceFromCenter = (framesSinceStart*p[1].stats.averageDistanceFromCenter + p2CenterDistance) / (framesSinceStart + 1);
 	
 	//Increment frame counter of person who is closest to center. If the players are even distances from the center, do not increment
-	if (p1CenterDistance < p2CenterDistance) p1stats->framesClosestCenter++;
-	else if (p2CenterDistance < p1CenterDistance) p2stats->framesClosestCenter++;
+	if (p1CenterDistance < p2CenterDistance) p[0].stats.framesClosestCenter++;
+	else if (p2CenterDistance < p1CenterDistance) p[1].stats.framesClosestCenter++;
 
-	//Check if a stock has ended
-	if (p1pfd->stocks - p1cfd->stocks > 0 && p1cfd->stocks < STOCK_COUNT) {
-		StockStatistics& s = p1stats->stocks[STOCK_COUNT - p1pfd->stocks];
-		s.frame = CurrentGame.frameCounter;
-		s.percent = p1pfd->percent;
-		s.killedBy = p2pfd->lastMoveHitId;
-	}
-	
-	//Check p2 for a death
-	if (p2pfd->stocks - p2cfd->stocks > 0 && p2cfd->stocks < STOCK_COUNT) {
-		StockStatistics& s = p2stats->stocks[STOCK_COUNT - p2pfd->stocks];
-		s.frame = CurrentGame.frameCounter;
-		s.percent = p2pfd->percent;
-		s.killedBy = p1pfd->lastMoveHitId;
-	}
+  //Increment frame counter of person who is highest;
+  if (p[0].currentFrameData.locationY > p[1].currentFrameData.locationY) p[0].stats.framesAboveOthers++;
+  else if (p[1].currentFrameData.locationY > p[0].currentFrameData.locationY) p[1].stats.framesAboveOthers++;
+  
+  for (int i = 0; i < PLAYER_COUNT; i++) {
+    Player& cp = p[i]; //Current player
+    Player& op = p[!i]; //Other player
+    
+    //Check current action states
+    if (cp.currentFrameData.Animation >= GUARD_START && cp.currentFrameData.Animation <= GUARD_END) cp.stats.framesInShield;
+    else if (cp.currentFrameData.Animation == ROLL_FORWARD && cp.previousFrameData.Animation != ROLL_FORWARD) cp.stats.rollForwardCount++;
+    else if (cp.currentFrameData.Animation == ROLL_BACKWARD && cp.previousFrameData.Animation != ROLL_BACKWARD) cp.stats.rollBackCount++;
+    else if (cp.currentFrameData.Animation == SPOT_DODGE && cp.previousFrameData.Animation != SPOT_DODGE) cp.stats.spotDodgeCount++;
+    else if (cp.currentFrameData.Animation == AIR_DODGE && cp.previousFrameData.Animation != AIR_DODGE) cp.stats.airDodgeCount++;
+    
+    //Stock specific stuff
+    int stockIndex = STOCK_COUNT - cp.currentFrameData.stocks;
+    if (stockIndex >= 0 && stockIndex < STOCK_COUNT) {
+      StockStatistics& s = cp.stats.stocks[stockIndex];
+      s.frame = CurrentGame.frameCounter;
+      s.percent = cp.currentFrameData.percent;
+      s.lastHitBy = op.currentFrameData.lastMoveHitId;
+      s.isStockUsed = true;
+    }
+  }
 }
 
 //**********************************************************************

@@ -1,5 +1,6 @@
 #include <stdint.h>
 #include <stdio.h>
+#include "meleeids.h"
 
 #define PLAYER_COUNT 2
 #define STOCK_COUNT 4
@@ -38,8 +39,9 @@ typedef struct {
 typedef struct {
 	uint32_t frame;
 	float percent;
-	uint8_t killedBy;
+	uint8_t lastHitBy;
 	uint8_t deathDirection;
+  bool isStockUsed;
 } StockStatistics;
 
 typedef struct {
@@ -47,6 +49,14 @@ typedef struct {
   uint32_t framesAboveOthers; //Assuming if you are higher, you are in a worse position
   uint32_t framesClosestCenter; //Assuming if you are closer to center, you are controlling the stage
   float averageDistanceFromCenter;
+  
+  uint32_t framesInShield; //Amount of frames spent shielding
+  
+  //Defensive option selection
+  uint16_t rollForwardCount;
+  uint16_t rollBackCount;
+  uint16_t spotDodgeCount;
+  uint16_t airDodgeCount;
   
   //Recovery
   uint16_t recoveryAttempts;
@@ -92,4 +102,15 @@ typedef struct {
   uint8_t data[MSG_BUFFER_SIZE]; //No event should pass more than 1024 bytes
 } RfifoMessage;
 
-
+bool checkIfOffstage(uint16_t stage, float x, float y) {
+  switch(stage) {
+    case STAGE_FOD:
+    case STAGE_POKEMON:
+    case STAGE_YOSHIS:
+    case STAGE_DREAM_LAND:
+    case STAGE_BATTLEFIELD:
+    case STAGE_FD:
+    default:
+      return false;
+  }
+}

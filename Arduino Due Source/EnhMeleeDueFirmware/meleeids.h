@@ -1,9 +1,25 @@
 //Animation ID ranges
 #define DAMAGE_START 0x4B
 #define DAMAGE_END 0x5B
+#define GUARD_START 0xB2
+#define GUARD_END 0xB6
+
+//Animation ID specific
+#define ROLL_FORWARD 0xE9
+#define ROLL_BACKWARD 0xEA
+#define SPOT_DODGE 0xEB
+#define AIR_DODGE 0xEC
 
 //Frame numbers
 #define HUMAN_CONTROL_FRAME 70 //not sure about this number, it's somewhere around this
+
+//Stage IDs
+#define STAGE_FOD 2
+#define STAGE_POKEMON 3
+#define STAGE_YOSHIS 8
+#define STAGE_DREAM_LAND 28
+#define STAGE_BATTLEFIELD 31
+#define STAGE_FD 32
 
 char* externalCharacterNames[] = {
   "Captain Falcon",
