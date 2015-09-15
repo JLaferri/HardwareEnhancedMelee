@@ -7,6 +7,9 @@
 #define MAX_FRAMES 28800
 #define MSG_BUFFER_SIZE 1024
 
+//For statistics
+#define FRAMES_LANDED_RECOVERY 60
+
 typedef struct {
   //Volatile data - this data will change throughout the course of the match
   uint8_t internalCharacterId;
@@ -33,10 +36,19 @@ typedef struct {
 typedef struct {
   //Recovery
   bool isRecovering = false;
+  bool isHitOffStage = false;
+  bool isLandedOnStage = false;
   uint8_t framesSinceLanding;
   
   uint32_t framesWithoutDamage;
 } PlayerFlags;
+
+void resetRecoveryFlags(PlayerFlags& flags) {
+  flags.isRecovering = false;
+  flags.isHitOffStage = false;
+  flags.isLandedOnStage = false;
+  framesSinceLanding = 0;
+}
 
 typedef struct {
 	uint32_t frame;
@@ -109,11 +121,17 @@ typedef struct {
 bool checkIfOffstage(uint16_t stage, float x, float y) {
   switch(stage) {
     case STAGE_FOD:
+      return x < -63.35 || x > 63.35 || y < 0;
     case STAGE_POKEMON:
+      return x < -87.75 || x > 87.75 || y < 0;
     case STAGE_YOSHIS:
+      return x < -56 || x > 56 || y < 0;
     case STAGE_DREAM_LAND:
+      return x < -77.27 || x > 77.27 || y < 0;
     case STAGE_BATTLEFIELD:
+      return x < -68.4 || x > 68.4 || y < 0;
     case STAGE_FD:
+      return x < -85.5606 || x > 85.5606 || y < 0;
     default:
       return false;
   }

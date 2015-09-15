@@ -9,6 +9,9 @@
 #define ROLL_BACKWARD 0xEA
 #define SPOT_DODGE 0xEB
 #define AIR_DODGE 0xEC
+#define ACTION_WAIT 0xE
+#define ACTION_DASH 0x14
+#define ACTION_KNEE_BEND 0x18
 
 //Stage IDs
 #define STAGE_FOD 2

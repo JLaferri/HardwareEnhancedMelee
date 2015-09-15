@@ -345,6 +345,8 @@ void postGameEndMessage() {
       PlayerStatistics& ps = CurrentGame.players[i].stats;
       JsonObject& item = jsonBuffer.createObject();
 
+      item["stocksRemaining"] = CurrentGame.players[i].currentFrameData.stocks;
+      
       item["averageDistanceFromCenter"] = ps.averageDistanceFromCenter;
       item["percentTimeClosestCenter"] = 100 * (ps.framesClosestCenter / totalActiveGameFrames);
       item["percentTimeAboveOthers"] = 100 * (ps.framesAboveOthers / totalActiveGameFrames);
@@ -354,6 +356,9 @@ void postGameEndMessage() {
       item["rollCount"] = ps.rollCount;
       item["spotDodgeCount"] = ps.spotDodgeCount;
       item["airDodgeCount"] = ps.airDodgeCount;
+      
+      item["recoveryAttempts"] = ps.recoveryAttempts;
+      item["successfulRecoveries"] = ps.successfulRecoveries;
       
       JsonArray& stocks = item.createNestedArray("stocks");
       for (int j = 0; j < STOCK_COUNT; j++) {
@@ -410,6 +415,8 @@ void computeStatistics() {
     Player& cp = p[i]; //Current player
     Player& op = p[!i]; //Other player
     
+    bool lostStock = cp.previousFrameData.stocks - cp.currentFrameData.stocks > 0;
+    
     //Check current action states, although many of these conditions check previous frame data, it shouldn't matter for frame = 1 that there is no previous
     if (cp.currentFrameData.animation >= GUARD_START && cp.currentFrameData.animation <= GUARD_END) cp.stats.framesInShield++;
     else if ((cp.currentFrameData.animation == ROLL_FORWARD && cp.previousFrameData.animation != ROLL_FORWARD) ||
@@ -417,15 +424,54 @@ void computeStatistics() {
     else if (cp.currentFrameData.animation == SPOT_DODGE && cp.previousFrameData.animation != SPOT_DODGE) cp.stats.spotDodgeCount++;
     else if (cp.currentFrameData.animation == AIR_DODGE && cp.previousFrameData.animation != AIR_DODGE) cp.stats.airDodgeCount++;
     
+    bool beingDamaged = cp.currentFrameData.animation >= DAMAGE_START && cp.currentFrameData.animation <= DAMAGE_END;
+    
     //Check if we are getting damaged
-    if (cp.currentFrameData.animation >= DAMAGE_START && cp.currentFrameData.animation <= DAMAGE_END) {
+    if (beingDamaged) {
       cp.flags.framesWithoutDamage = 0;
-    }
-    else {
+    } else {
       cp.flags.framesWithoutDamage++; //Increment count of frames without taking damage
 
       //If frames without being hit is greater than previous, set new record
       if (cp.flags.framesWithoutDamage > cp.stats.mostFramesWithoutDamage) cp.stats.mostFramesWithoutDamage = cp.flags.framesWithoutDamage; 
+    }
+    
+    //Recovery detection
+    bool isOffStage = checkIfOffStage(CurrentGame.stage, cp.currentFrameData.locationX, cp.currentFrameData.locationY);
+    bool isInControl = cp.currentFrameData.animation == ACTION_WAIT || cp.currentFrameData.animation == ACTION_DASH || cp.currentFrameData.animation == ACTION_KNEE_BEND;
+    if (!cp.flags.isRecovering && !cp.flags.isHitOffStage && beingDamaged && isOffStage) {
+      //If player took a hit off stage
+      cp.flags.isHitOffStage = true;
+    }
+    else if (!cp.flags.isRecovering && cp.flags.isHitOffStage && !beingDamaged && isOffStage) {
+      //If player exited damage state off stage
+      cp.flags.isRecovering = true;
+    }
+    else if ((cp.flags.isRecovering || cp.flags.isHitOffStage) && isInControl) {
+      //If a player is in control of his character after recovering flag as landed
+      cp.flags.isLandedOnStage = true;
+    }
+    else if (cp.flags.isLandedOnStage && isOffStage) {
+      //If player landed but is sent back off stage, continue recovery process
+      cp.flags.framesSinceLanding = 0;
+      cp.flags.isLandedOnStage = false;
+    }
+    else if (cp.flags.isLandedOnStage && !isOffStage) {
+      //If player landed and is still on stage, increment frame counter
+      cp.flags.framesSinceLanding++;
+      
+      //If frame counter while on stage passes threshold, consider it a successful recovery
+      if (cp.flags.framesSinceLanding > FRAMES_LANDED_RECOVERY) {
+        cp.stats.recoveryAttempts++;
+        cp.stats.successfulRecoveries++;
+        resetRecoveryFlags(cp.flags);
+      }
+    }
+    else if (cp.flags.isRecovering && lostStock) {
+      //TODO: Check if this function gets called on last stock lost
+      //If player dies while recovering, consider it a failed recovery
+      cp.stats.recoveryAttempts++;
+      resetRecoveryFlags(cp.flags);
     }
     
     //Stock specific stuff
