@@ -10,9 +10,6 @@
 #define SPOT_DODGE 0xEB
 #define AIR_DODGE 0xEC
 
-//Frame numbers
-#define HUMAN_CONTROL_FRAME 70 //not sure about this number, it's somewhere around this
-
 //Stage IDs
 #define STAGE_FOD 2
 #define STAGE_POKEMON 3

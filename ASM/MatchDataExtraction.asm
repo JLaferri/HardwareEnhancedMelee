@@ -1,8 +1,8 @@
 #**************************************************************************
-#					 Inject at address 0x8016CDAC
+#                                       Inject at address 0x8016CDA8
 #***************************************************************************
 
-lbz	r0,0x5(r3) #execute replaced code line
+mr r31, r3 #execute replaced code line
 
 #***************************************************************************
 #                  		subroutine: writeStats
@@ -15,6 +15,7 @@ stwu r1,-0x20(r1)
 stw r31,0x1C(r1)
 stw r30,0x18(r1)
 stw r29,0x14(r1)
+stw r3,0x10(r1) #normally there is no need to store this register but it appears to be an input for the function of injection point
 
 #check if in single player mode, and ignore code if so
 lis	r3,0x801A # load SinglePlayer_Check function
@@ -46,11 +47,11 @@ lwz	r3,-0x493C(r3)	# load match frame count
 cmpwi r3,0
 bne- FRAME_UPDATE
 
-#check pre-match frame count
-#lis	r3,0x8170
-#lhz	r3,0x6(r3)	# load pre-match frame count
-#cmpwi r3,0		# is this absolute first frame?
-#bne- CLEANUP # during pre-match freeze frames, don't send data
+#check scene controller frame count to make sure it is zero as well (only want to trigger OnStart on very first frame of match)
+lis	r3,0x8048
+lwz	r3,-0x62A8(r3)	# load scene controller frame count
+cmpwi r3,0 # is this absolute first frame?
+bne- CLEANUP # during pre-match freeze frames, don't send data
 
 #------------- MATCH_PARAMS -------------
 MATCH_PARAMS:
@@ -183,6 +184,7 @@ lwz r0, 0x24(r1)
 lwz r31, 0x1C(r1)
 lwz r30, 0x18(r1)
 lwz r29, 0x14(r1)
+lwz r3, 0x10(r1)
 addi r1, r1, 0x20
 mtlr r0
 

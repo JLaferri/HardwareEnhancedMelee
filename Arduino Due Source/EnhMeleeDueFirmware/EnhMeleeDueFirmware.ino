@@ -335,10 +335,9 @@ void postGameEndMessage() {
     
     JsonObject& root = jsonBuffer.createObject();
     root["frames"] = CurrentGame.frameCounter;
-    root["activeFrames"] = CurrentGame.frameCounter - HUMAN_CONTROL_FRAME;
     root["winCondition"] = CurrentGame.winCondition;
 
-    float totalActiveGameFrames = float(CurrentGame.frameCounter - HUMAN_CONTROL_FRAME);
+    float totalActiveGameFrames = float(CurrentGame.frameCounter);
     
     JsonArray& data = root.createNestedArray("players");
     for (int i = 0; i < PLAYER_COUNT; i++) {
@@ -388,10 +387,8 @@ void postGameEndMessage() {
 //*                            Statistics
 //**********************************************************************
 void computeStatistics() {
-  //TODO: Change this to include time not in control?
-	if (CurrentGame.frameCounter < HUMAN_CONTROL_FRAME) return;
-	
-	uint32_t framesSinceStart = CurrentGame.frameCounter - HUMAN_CONTROL_FRAME;
+  //this function will only get called when frameCount >= 1
+	uint32_t framesSinceStart = CurrentGame.frameCounter - 1;
   
 	Player* p = CurrentGame.players;
 	
@@ -413,7 +410,7 @@ void computeStatistics() {
     Player& cp = p[i]; //Current player
     Player& op = p[!i]; //Other player
     
-    //Check current action states
+    //Check current action states, although many of these conditions check previous frame data, it shouldn't matter for frame = 1 that there is no previous
     if (cp.currentFrameData.animation >= GUARD_START && cp.currentFrameData.animation <= GUARD_END) cp.stats.framesInShield++;
     else if ((cp.currentFrameData.animation == ROLL_FORWARD && cp.previousFrameData.animation != ROLL_FORWARD) ||
              (cp.currentFrameData.animation == ROLL_BACKWARD && cp.previousFrameData.animation != ROLL_BACKWARD)) cp.stats.rollCount++;
