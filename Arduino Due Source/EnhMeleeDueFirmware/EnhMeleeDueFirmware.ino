@@ -331,7 +331,7 @@ void postConnectedMessage() {
 
 void postGameEndMessage() {
   if (client.connected()) {
-    StaticJsonBuffer<1000> jsonBuffer;
+    StaticJsonBuffer<4000> jsonBuffer;
     
     JsonObject& root = jsonBuffer.createObject();
     root["frames"] = CurrentGame.frameCounter;
@@ -342,6 +342,7 @@ void postGameEndMessage() {
     
     JsonArray& data = root.createNestedArray("players");
     for (int i = 0; i < PLAYER_COUNT; i++) {
+      //Serial.println(String("Writing out player ") + i);
       PlayerStatistics& ps = CurrentGame.players[i].stats;
       JsonObject& item = jsonBuffer.createObject();
 
@@ -349,24 +350,30 @@ void postGameEndMessage() {
       item["percentTimeClosestCenter"] = 100 * (ps.framesClosestCenter / totalActiveGameFrames);
       item["percentTimeAboveOthers"] = 100 * (ps.framesAboveOthers / totalActiveGameFrames);
       item["percentTimeInShield"] = 100 * (ps.framesInShield / totalActiveGameFrames);
+      item["secondsWithoutDamage"] = float(ps.mostFramesWithoutDamage) / 60;
+
+      item["rollCount"] = ps.rollCount;
+      item["spotDodgeCount"] = ps.spotDodgeCount;
+      item["airDodgeCount"] = ps.airDodgeCount;
       
       JsonArray& stocks = item.createNestedArray("stocks");
       for (int j = 0; j < STOCK_COUNT; j++) {
-          StockStatistics& ss = ps.stocks[j];
+        //Serial.println(String("Writing out player ") + i + String(". Stock: ") + j);
+        StockStatistics& ss = ps.stocks[j];
+        
+        //Only log the stock if the player actually played that stock
+        if (ss.isStockUsed) {
+          JsonObject& stock = jsonBuffer.createObject();
+        
+          uint32_t stockFrames = ss.frame;
+          if (j > 0) stockFrames -= ps.stocks[j - 1].frame;
           
-          //Only log the stock if the player actually played that stock
-          if (ss.isStockUsed) {
-            JsonObject& stock = jsonBuffer.createObject();
-
-            uint32_t stockFrames = ss.frame;
-            if (j > 0) stockFrames -= ps.stocks[j - 1].frame;
-            
-            stock["timeSeconds"] = float(stockFrames) / 60; 
-            stock["percent"] = ss.percent;
-            stock["moveLastHitBy"] = ss.lastHitBy;
-
-            stocks.add(stock);
-          }
+          stock["timeSeconds"] = float(stockFrames) / 60; 
+          stock["percent"] = ss.percent;
+          stock["moveLastHitBy"] = ss.lastHitBy;
+        
+          stocks.add(stock);
+        }
       }
       
       data.add(item);
@@ -381,6 +388,7 @@ void postGameEndMessage() {
 //*                            Statistics
 //**********************************************************************
 void computeStatistics() {
+  //TODO: Change this to include time not in control?
 	if (CurrentGame.frameCounter < HUMAN_CONTROL_FRAME) return;
 	
 	uint32_t framesSinceStart = CurrentGame.frameCounter - HUMAN_CONTROL_FRAME;
@@ -406,11 +414,22 @@ void computeStatistics() {
     Player& op = p[!i]; //Other player
     
     //Check current action states
-    if (cp.currentFrameData.Animation >= GUARD_START && cp.currentFrameData.Animation <= GUARD_END) cp.stats.framesInShield;
-    else if (cp.currentFrameData.Animation == ROLL_FORWARD && cp.previousFrameData.Animation != ROLL_FORWARD) cp.stats.rollForwardCount++;
-    else if (cp.currentFrameData.Animation == ROLL_BACKWARD && cp.previousFrameData.Animation != ROLL_BACKWARD) cp.stats.rollBackCount++;
-    else if (cp.currentFrameData.Animation == SPOT_DODGE && cp.previousFrameData.Animation != SPOT_DODGE) cp.stats.spotDodgeCount++;
-    else if (cp.currentFrameData.Animation == AIR_DODGE && cp.previousFrameData.Animation != AIR_DODGE) cp.stats.airDodgeCount++;
+    if (cp.currentFrameData.animation >= GUARD_START && cp.currentFrameData.animation <= GUARD_END) cp.stats.framesInShield++;
+    else if ((cp.currentFrameData.animation == ROLL_FORWARD && cp.previousFrameData.animation != ROLL_FORWARD) ||
+             (cp.currentFrameData.animation == ROLL_BACKWARD && cp.previousFrameData.animation != ROLL_BACKWARD)) cp.stats.rollCount++;
+    else if (cp.currentFrameData.animation == SPOT_DODGE && cp.previousFrameData.animation != SPOT_DODGE) cp.stats.spotDodgeCount++;
+    else if (cp.currentFrameData.animation == AIR_DODGE && cp.previousFrameData.animation != AIR_DODGE) cp.stats.airDodgeCount++;
+    
+    //Check if we are getting damaged
+    if (cp.currentFrameData.animation >= DAMAGE_START && cp.currentFrameData.animation <= DAMAGE_END) {
+      cp.flags.framesWithoutDamage = 0;
+    }
+    else {
+      cp.flags.framesWithoutDamage++; //Increment count of frames without taking damage
+
+      //If frames without being hit is greater than previous, set new record
+      if (cp.flags.framesWithoutDamage > cp.stats.mostFramesWithoutDamage) cp.stats.mostFramesWithoutDamage = cp.flags.framesWithoutDamage; 
+    }
     
     //Stock specific stuff
     int stockIndex = STOCK_COUNT - cp.currentFrameData.stocks;
@@ -489,8 +508,11 @@ void loop() {
           computeStatistics();
           break;
         case EVENT_GAME_END:
-          handleGameEnd();
-          postGameEndMessage();
+          if(!CurrentGame.matchReported) {
+            handleGameEnd();
+            postGameEndMessage();
+            CurrentGame.matchReported = true;
+          }
           break;
       }
     } else {

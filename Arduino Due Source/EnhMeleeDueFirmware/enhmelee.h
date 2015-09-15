@@ -34,6 +34,8 @@ typedef struct {
   //Recovery
   bool isRecovering = false;
   uint8_t framesSinceLanding;
+  
+  uint32_t framesWithoutDamage;
 } PlayerFlags;
 
 typedef struct {
@@ -51,10 +53,10 @@ typedef struct {
   float averageDistanceFromCenter;
   
   uint32_t framesInShield; //Amount of frames spent shielding
+  uint32_t mostFramesWithoutDamage; //Amount of frames without being hit
   
   //Defensive option selection
-  uint16_t rollForwardCount;
-  uint16_t rollBackCount;
+  uint16_t rollCount;
   uint16_t spotDodgeCount;
   uint16_t airDodgeCount;
   
@@ -92,6 +94,8 @@ typedef struct {
   
   //From OnGameEnd event
   uint8_t winCondition;
+
+  bool matchReported;
 } Game;
 
 typedef struct {
