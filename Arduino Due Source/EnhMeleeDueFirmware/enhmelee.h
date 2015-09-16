@@ -47,7 +47,7 @@ void resetRecoveryFlags(PlayerFlags& flags) {
   flags.isRecovering = false;
   flags.isHitOffStage = false;
   flags.isLandedOnStage = false;
-  framesSinceLanding = 0;
+  flags.framesSinceLanding = 0;
 }
 
 typedef struct {
@@ -118,7 +118,7 @@ typedef struct {
   uint8_t data[MSG_BUFFER_SIZE]; //No event should pass more than 1024 bytes
 } RfifoMessage;
 
-bool checkIfOffstage(uint16_t stage, float x, float y) {
+bool checkIfOffStage(uint16_t stage, float x, float y) {
   switch(stage) {
     case STAGE_FOD:
       return x < -63.35 || x > 63.35 || y < 0;

@@ -551,11 +551,9 @@ void loop() {
           computeStatistics();
           break;
         case EVENT_GAME_END:
-          if(!CurrentGame.matchReported) {
-            handleGameEnd();
-            postGameEndMessage();
-            CurrentGame.matchReported = true;
-          }
+          handleGameEnd();
+          postGameEndMessage();
+          CurrentGame.matchReported = true;
           break;
       }
     } else {

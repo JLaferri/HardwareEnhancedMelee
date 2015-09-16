@@ -1,8 +1,11 @@
 #**************************************************************************
-#                                       Inject at address 0x8016CDA8
+#                                       Inject at address 800D32FC 
+# Unsure what the inject target function does exactly but I do know it ends up calling the
+# stock subtraction instructions. It is called once per frame per character. It is also
+# called during the score screen
 #***************************************************************************
 
-mr r31, r3 #execute replaced code line
+#replaced code line is executed at the end
 
 #***************************************************************************
 #                  		subroutine: writeStats
@@ -15,7 +18,36 @@ stwu r1,-0x20(r1)
 stw r31,0x1C(r1)
 stw r30,0x18(r1)
 stw r29,0x14(r1)
-stw r3,0x10(r1) #normally there is no need to store this register but it appears to be an input for the function of injection point
+
+#check if there are 3 or more players
+lis	r3,0x8016
+ori	r3,r3,0xB558 # load CountPlayers function
+mtlr r3
+blrl
+cmpwi r3,3 # 3 or more players in match?
+bge- CLEANUP # skip all this if so
+
+#an input to this function is r5, r5 is the pointer of the player currently being considered + 0x60
+#skip everything if pointer is not equal to the last players pointer
+#load character pointer for this player
+li r30, 3 #load last player number first
+LAST_PLAYER_CHECK:
+lis r3, 0x8045
+ori r3, r3, 0x3130
+mulli r4, r30, 0xE90 #computer address of this player's pointer
+add r3, r3, r4
+lwz r3, 0x0(r3)
+cmpwi r3,0
+bne LAST_PLAYER_FOUND #loop through until we find last player in game
+
+subi r30,r30,1 #decrement player id
+cmpwi r30,1
+bge LAST_PLAYER_CHECK #iterate until potential last player candidates have been checked
+
+LAST_PLAYER_FOUND:
+addi r3, r3, 0x60
+cmpw r3,r5
+bne CLEANUP #if last valid player found does not equal player being considered, skip
 
 #check if in single player mode, and ignore code if so
 lis	r3,0x801A # load SinglePlayer_Check function
@@ -27,34 +59,28 @@ blrl
 cmpwi r3,1 # is this single player mode?	
 beq- CLEANUP # if in single player, ignore everything
 
-#check if there are 3 or more players
-lis	r3,0x8016
-ori	r3,r3,0xB558 # load CountPlayers function
-mtlr r3
-blrl
-cmpwi r3,3 # 3 or more players in match?
-bge- CLEANUP # skip all this if so
-
-#check if match is paused 
-lis	r3,0x8048
-lbz	r3,-0x6298(r3) # load screen freeze byte
-cmpwi r3,0
-bne- CLEANUP # if paused/match end, skip
-
 #check frame count
 lis	r3,0x8047
 lwz	r3,-0x493C(r3)	# load match frame count
+lis	r4,0x8048 #check scene controller frame count to make sure it is zero as well (only want to trigger OnStart on very first frame of match)
+lwz	r4,-0x62A8(r4)	# load scene controller frame count
+
+#check scene controller first, if zero it's either start or end of match
+cmpwi r4,0
+bne UPDATE_OR_RESULTS
+
+#Here the scene controller is equal to zero, either trigger OnStart or OnEnd
 cmpwi r3,0
-bne- FRAME_UPDATE
+bne ON_END_EVENT #if match frame count is greater than zero, this is the results screen
 
-#check scene controller frame count to make sure it is zero as well (only want to trigger OnStart on very first frame of match)
-lis	r3,0x8048
-lwz	r3,-0x62A8(r3)	# load scene controller frame count
-cmpwi r3,0 # is this absolute first frame?
-bne- CLEANUP # during pre-match freeze frames, don't send data
+#------------- ON_START_EVENT -------------
+#TEMPORARY: Send dummy event in order to get communication functioning properly. Unsure why this happens, i'll look into it later
+#this transaction will get ignored anyway
+bl startExiTransfer
+li r3, 0xFE
+bl sendByteExi
+bl endExiTransfer
 
-#------------- MATCH_PARAMS -------------
-MATCH_PARAMS:
 bl startExiTransfer #indicate transfer start
 
 li r3, 0x37
@@ -105,8 +131,29 @@ blt MP_WRITE_PLAYER
 bl endExiTransfer #stop transfer
 b CLEANUP
 
+ON_END_EVENT:
+#------------- ON_END_EVENT -------------
+bl startExiTransfer #indicate transfer start
+
+li r3, 0x39
+bl sendByteExi #send OnMatchEnd event code
+
+#check byte that will tell us whether the game was won by stock loss or by ragequit
+lis r3, 0x8047
+lbz r3, -0x4960(r3)
+bl sendByteExi #send win condition byte. this byte will be 0 on ragequit, 1 or 3 on win by stock loss
+
+bl endExiTransfer #stop transfer
+b CLEANUP
+
+UPDATE_OR_RESULTS:
+#check if we are in results screen, if so, skip update
+lis r3, 0x8045
+lbz r3, 0x30C9(r3) #this global address exists for all players and appears to be = 1 when in game and = 0 when in results screen
+cmpwi r3, 0
+beq CLEANUP
+
 #------------- FRAME_UPDATE -------------
-FRAME_UPDATE:
 bl startExiTransfer #indicate transfer start
 
 li r3, 0x38
@@ -184,7 +231,6 @@ lwz r0, 0x24(r1)
 lwz r31, 0x1C(r1)
 lwz r30, 0x18(r1)
 lwz r29, 0x14(r1)
-lwz r3, 0x10(r1)
 addi r1, r1, 0x20
 mtlr r0
 
@@ -296,3 +342,4 @@ mtlr r0
 blr
 
 GECKO_END:
+lwz r0, 0x24(r1) #execute replaced code line
