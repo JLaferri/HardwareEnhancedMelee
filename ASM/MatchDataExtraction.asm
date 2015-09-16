@@ -1,5 +1,5 @@
 #**************************************************************************
-#                                       Inject at address 800D32FC 
+#                                       Inject at address 8006C0D8
 # Unsure what the inject target function does exactly but I do know it ends up calling the
 # stock subtraction instructions. It is called once per frame per character. It is also
 # called during the score screen
@@ -67,7 +67,7 @@ lwz	r4,-0x62A8(r4)	# load scene controller frame count
 
 #check scene controller first, if zero it's either start or end of match
 cmpwi r4,0
-bne UPDATE_OR_RESULTS
+bne PRE_UPDATE_CHECKS
 
 #Here the scene controller is equal to zero, either trigger OnStart or OnEnd
 cmpwi r3,0
@@ -146,7 +146,11 @@ bl sendByteExi #send win condition byte. this byte will be 0 on ragequit, 1 or 3
 bl endExiTransfer #stop transfer
 b CLEANUP
 
-UPDATE_OR_RESULTS:
+PRE_UPDATE_CHECKS:
+#check if we are on game frame zero (countdown freeze time), if so, skip update
+cmpwi r3,0
+beq CLEANUP
+
 #check if we are in results screen, if so, skip update
 lis r3, 0x8045
 lbz r3, 0x30C9(r3) #this global address exists for all players and appears to be = 1 when in game and = 0 when in results screen
@@ -342,4 +346,4 @@ mtlr r0
 blr
 
 GECKO_END:
-lwz r0, 0x24(r1) #execute replaced code line
+lwz r0, 0x94(r1) #execute replaced code line
