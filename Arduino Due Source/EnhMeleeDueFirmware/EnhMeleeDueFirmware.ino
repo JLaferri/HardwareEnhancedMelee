@@ -335,6 +335,7 @@ void postGameEndMessage() {
     
     JsonObject& root = jsonBuffer.createObject();
     root["frames"] = CurrentGame.frameCounter;
+    root["framesMissed"] CurrentGame.framesMissed;
     root["winCondition"] = CurrentGame.winCondition;
 
     float totalActiveGameFrames = float(CurrentGame.frameCounter);
@@ -346,6 +347,8 @@ void postGameEndMessage() {
       JsonObject& item = jsonBuffer.createObject();
 
       item["stocksRemaining"] = CurrentGame.players[i].currentFrameData.stocks;
+      
+      item["apm"] = 3600 * (ps.actionCount / totalActiveGameFrames);
       
       item["averageDistanceFromCenter"] = ps.averageDistanceFromCenter;
       item["percentTimeClosestCenter"] = 100 * (ps.framesClosestCenter / totalActiveGameFrames);
@@ -375,6 +378,8 @@ void postGameEndMessage() {
           stock["timeSeconds"] = float(stockFrames) / 60; 
           stock["percent"] = ss.percent;
           stock["moveLastHitBy"] = ss.lastHitBy;
+          stock["lastAnimation"] = ss.lastAnimation;
+          stock["isStockLost"] = ss.isStockLost;
         
           stocks.add(stock);
         }
@@ -391,6 +396,14 @@ void postGameEndMessage() {
 //**********************************************************************
 //*                            Statistics
 //**********************************************************************
+int numberOfSetBits(uint32_t x) {
+  //This function solves the Hamming Weight problem. Effectively it counts the number of bits in the input that are set to 1
+  //This implementation is supposedly very efficient when most bits are zero. Found: https://en.wikipedia.org/wiki/Hamming_weight#Efficient_implementation
+  int count;
+  for (count=0; x; count++) x &= x-1;
+  return count;
+}
+
 void computeStatistics() {
   //this function will only get called when frameCount >= 1
 	uint32_t framesSinceStart = CurrentGame.frameCounter - 1;
@@ -436,7 +449,25 @@ void computeStatistics() {
       if (cp.flags.framesWithoutDamage > cp.stats.mostFramesWithoutDamage) cp.stats.mostFramesWithoutDamage = cp.flags.framesWithoutDamage; 
     }
     
-    //Recovery detection
+    //------------------- Increment Action Count for APM Calculation --------------------------------
+    //First count the number of buttons that go from 0 to 1
+    uint32_t buttonChanges = ~cp.previousFrameData.buttons & cp.currentFrameData.buttons;
+    cp.stats.actionCount += numberOfSetBits(buttonChanges); //Increment action count by amount of button presses
+    
+    //Increment action count when sticks change from one region to another. Don't increment when stick returns to deadzone
+    uint8_t prevAnalogRegion = getJoystickRegion(cp.prevFrameData.joystickX, cp.prevFrameData.joystickY);
+    uint8_t currentAnalogRegion = getJoystickRegion(cp.currentFrameData.joystickX, cp.currentFrameData.joystickY);
+    if ((prevAnalogRegion != currentAnalogRegion) && (currentAnalogRegion != 0)) cp.stats.actionCount++;
+    
+    //Do the same for c-stick
+    uint8_t prevCstickRegion = getJoystickRegion(cp.prevFrameData.cstickX, cp.prevFrameData.cstickY);
+    uint8_t currentCstickRegion = getJoystickRegion(cp.currentFrameData.cstickX, cp.currentFrameData.cstickY);
+    if ((prevCstickRegion != currentCstickRegion) && (currentCstickRegion != 0)) cp.stats.actionCount++;
+    
+    //Increment action on analog trigger... I'm not sure when. This needs revision
+    if (cp.prevFrameData.trigger < 10 && cp.currentFrameData.trigger >= 10) cp.stats.actionCount++;
+    
+    //--------------------------- Recovery detection --------------------------------------------------
     bool isOffStage = checkIfOffStage(CurrentGame.stage, cp.currentFrameData.locationX, cp.currentFrameData.locationY);
     bool isInControl = cp.currentFrameData.animation == ACTION_WAIT || cp.currentFrameData.animation == ACTION_DASH || cp.currentFrameData.animation == ACTION_KNEE_BEND;
     if (!cp.flags.isRecovering && !cp.flags.isHitOffStage && beingDamaged && isOffStage) {
@@ -474,15 +505,20 @@ void computeStatistics() {
       resetRecoveryFlags(cp.flags);
     }
     
-    //Stock specific stuff
+    //-------------------------- Stock specific stuff -------------------------------------------------
     int stockIndex = STOCK_COUNT - cp.currentFrameData.stocks;
     if (stockIndex >= 0 && stockIndex < STOCK_COUNT) {
       StockStatistics& s = cp.stats.stocks[stockIndex];
+      s.isStockUsed = true;
       s.frame = CurrentGame.frameCounter;
       s.percent = cp.currentFrameData.percent;
-      s.lastHitBy = op.currentFrameData.lastMoveHitId;
-      s.isStockUsed = true;
+      s.lastHitBy = op.currentFrameData.lastMoveHitId; //This will indicate what this player was killed by
+      s.lastAnimation = cp.currentFrameData.animation; //Hopefully this will indicate the type of death
     }
+    
+    //Mark last stock as lost if lostStock is true
+    int prevStockIndex = stockIndex - 1;
+    if (lostStock && prevStockIndex >= 0 && prevStockIndex < STOCK_COUNT) cp.stats.stocks[prevStockIndex] = true;
   }
 }
 
@@ -540,7 +576,6 @@ void loop() {
     if (Msg.success) {
       switch (Msg.eventCode) {
         case EVENT_GAME_START:
-		  //TODO: Check stock count and number of players here
           handleGameStart();
           debugPrintMatchParams();
           postMatchParameters();

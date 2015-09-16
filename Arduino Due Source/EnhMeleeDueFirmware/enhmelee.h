@@ -7,6 +7,16 @@
 #define MAX_FRAMES 28800
 #define MSG_BUFFER_SIZE 1024
 
+#define JOYSTICK_NE 1
+#define JOYSTICK_SE 2
+#define JOYSTICK_SW 3
+#define JOYSTICK_NW 4
+#define JOYSTICK_N 5
+#define JOYSTICK_E 6
+#define JOYSTICK_S 7
+#define JOYSTICK_W 8
+#define JOYSTICK_DZ 9
+
 //For statistics
 #define FRAMES_LANDED_RECOVERY 60
 
@@ -54,8 +64,9 @@ typedef struct {
 	uint32_t frame;
 	float percent;
 	uint8_t lastHitBy;
-	uint8_t deathDirection;
+	uint16_t lastAnimation;
   bool isStockUsed;
+  bool isStockLost;
 } StockStatistics;
 
 typedef struct {
@@ -75,6 +86,9 @@ typedef struct {
   //Recovery
   uint16_t recoveryAttempts;
   uint16_t successfulRecoveries;
+  
+  //APM
+  uint16_t actionCount;
   
   StockStatistics stocks[STOCK_COUNT];
 } PlayerStatistics;
@@ -106,8 +120,6 @@ typedef struct {
   
   //From OnGameEnd event
   uint8_t winCondition;
-
-  bool matchReported;
 } Game;
 
 typedef struct {
@@ -135,4 +147,17 @@ bool checkIfOffStage(uint16_t stage, float x, float y) {
     default:
       return false;
   }
+}
+
+//Return joystick region
+uint8_t getJoystickRegion(uint32_t x, uint32_t y) {
+  if(x >= 0.2875 & y >= 0.2875) return JOYSTICK_NE;
+  else if(x >= 0.2875 & y <= -0.2875) return JOYSTICK_SE; 
+  else if(x <= -0.2875 & y <= -0.2875) return JOYSTICK_SW;
+  else if(x <= -0.2875 & y >= 0.2875) return JOYSTICK_NW;
+  else if(y >= 0.2875) return JOYSTICK_N;
+  else if(x >= 0.2875) return JOYSTICK_E;
+  else if(y <= -0.2875) return JOYSTICK_S;
+  else if(x <= -0.2875) return JOYSTICK_W;
+  else return JOYSTICK_DZ;
 }
