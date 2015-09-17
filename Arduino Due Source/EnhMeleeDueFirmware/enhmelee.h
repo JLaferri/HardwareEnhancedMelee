@@ -39,8 +39,12 @@ typedef struct {
   float cstickX;
   float cstickY;
   float trigger;
-  uint32_t buttons;
-  
+  uint32_t buttons; //This will include multiple "buttons" pressed on special buttons. For example I think pressing z sets 3 bits
+
+  //This is extra controller information
+  uint16_t physicalButtons; //A better representation of what a player is actually pressing
+  float lTrigger;
+  float rTrigger;
 } PlayerFrameData;
 
 typedef struct {
@@ -65,6 +69,7 @@ typedef struct {
 	float percent;
 	uint8_t lastHitBy;
 	uint16_t lastAnimation;
+  //uint16_t deathAnimation; //to implement
   bool isStockUsed;
   bool isStockLost;
 } StockStatistics;
@@ -86,6 +91,8 @@ typedef struct {
   //Recovery
   uint16_t recoveryAttempts;
   uint16_t successfulRecoveries;
+  uint16_t edgeguardChances;
+  uint16_t edgeguardConversions;
   
   //APM
   uint16_t actionCount;

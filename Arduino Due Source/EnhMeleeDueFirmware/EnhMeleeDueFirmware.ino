@@ -15,7 +15,7 @@ int asmEvents[256];
 
 void asmEventsInitialize() {
   asmEvents[EVENT_GAME_START] = 0xA;
-  asmEvents[EVENT_UPDATE] = 0x66;
+  asmEvents[EVENT_UPDATE] = 0x7A;
   asmEvents[EVENT_GAME_END] = 0x1;
 }
 
@@ -119,101 +119,106 @@ void rfifoReadMessage() {
 //**********************************************************************
 //*                         Event Handlers
 //**********************************************************************
-#define GAME_START_PLAYER_FRAME_BYTES 4;
-#define UPDATE_PLAYER_FRAME_BYTES 47
-
 Game CurrentGame = { };
 
-uint16_t readHalf(uint8_t* a) {
-  return a[0] << 8 | a[1];
+//The read operators will read a value and increment the index so the next read will read in the correct location
+uint8_t readByte(uint8_t* a, int& idx) {
+  return a[idx++];
 }
 
-uint32_t readWord(uint8_t* a) {
-  return a[0] << 24 | a[1] << 16 | a[2] << 8 | a[3];
+uint16_t readHalf(uint8_t* a, int& idx) {
+  uint16_t value = a[idx] << 8 | a[idx + 1];
+  idx += 2;
+  return value;
 }
 
-float readFloat(uint8_t* a) {
-  uint32_t bytes = readWord(a);
+uint32_t readWord(uint8_t* a, int& idx) {
+  uint32_t value = a[idx] << 24 | a[idx + 1] << 16 | a[idx + 2] << 8 | a[idx + 3];
+  idx += 4;
+  return value;
+}
+
+float readFloat(uint8_t* a, int& idx) {
+  uint32_t bytes = readWord(a, idx);
   return *(float*)(&bytes);
 }
 
 void handleGameStart() {
   uint8_t* data = Msg.data;
+  int idx = 0;
   
   //Reset CurrentGame variable
   CurrentGame = { };
-
-//  Serial.println("Hello");
-//  //Debug
-//  for (int i = 0; i < 0xA; i++) {
-//    Serial.print(Msg.data[i], HEX);
-//    Serial.print(" ");
-//  }
   
   //Load stage ID
-  CurrentGame.stage = readHalf(&data[0]);;
+  CurrentGame.stage = readHalf(data, idx);
 
   for (int i = 0; i < PLAYER_COUNT; i++) {
-    Player* p = &CurrentGame.players[i];
-    int offset = i * GAME_START_PLAYER_FRAME_BYTES;
-
+    Player& p = CurrentGame.players[i];
+    
     //Load player data
-    p->controllerPort = data[2 + offset];
-    p->characterId = data[3 + offset];
-    p->playerType = data[4 + offset];
-    p->characterColor = data[5 + offset];
+    p.controllerPort = readByte(data, idx);
+    p.characterId = readByte(data, idx);
+    p.playerType = readByte(data, idx);
+    p.characterColor = readByte(data, idx);
   }
 }
 
 void handleUpdate() {
   uint8_t* data = Msg.data;
+  int idx = 0;
   
   //Check frame count and see if any frames were skipped
-  uint32_t frameCount = readWord(&data[0]);
+  uint32_t frameCount = readWord(data, idx);
   int framesMissed = frameCount - CurrentGame.frameCounter - 1;
   CurrentGame.framesMissed += framesMissed;
   CurrentGame.frameCounter = frameCount;
 
-  CurrentGame.randomSeed = readWord(&data[4]);
+  CurrentGame.randomSeed = readWord(data, idx);
 
   for (int i = 0; i < PLAYER_COUNT; i++) {
-    Player* p = &CurrentGame.players[i];
-    int offset = i * UPDATE_PLAYER_FRAME_BYTES;
+    Player& p = CurrentGame.players[i];
 
     //Change over previous frame data
-    p->previousFrameData = p->currentFrameData;
+    p.previousFrameData = p.currentFrameData;
 
-    PlayerFrameData* pfd = &p->currentFrameData;
+    PlayerFrameData& pfd = p.currentFrameData;
 
     //Load player data
-    *pfd = { };
-    pfd->internalCharacterId = data[8 + offset];
-    pfd->animation = readHalf(&data[9 + offset]);
-    pfd->locationX = readFloat(&data[11 + offset]);
-    pfd->locationY = readFloat(&data[15 + offset]);
+    pfd = { };
+    pfd.internalCharacterId = readByte(data, idx);
+    pfd.animation = readHalf(data, idx);
+    pfd.locationX = readFloat(data, idx);
+    pfd.locationY = readFloat(data, idx);
 
     //Controller information
-    pfd->joystickX = readFloat(&data[19 + offset]);
-    pfd->joystickY = readFloat(&data[23 + offset]);
-    pfd->cstickX = readFloat(&data[27 + offset]);
-    pfd->cstickY = readFloat(&data[31 + offset]);
-    pfd->trigger = readFloat(&data[35 + offset]);
-    pfd->buttons = readWord(&data[39 + offset]);
+    pfd.joystickX = readFloat(data, idx);
+    pfd.joystickY = readFloat(data, idx);
+    pfd.cstickX = readFloat(data, idx);
+    pfd.cstickY = readFloat(data, idx);
+    pfd.trigger = readFloat(data, idx);
+    pfd.buttons = readWord(data, idx);
 
     //More data
-    pfd->percent = readFloat(&data[43 + offset]);
-    pfd->shieldSize = readFloat(&data[47 + offset]);
-    pfd->lastMoveHitId = data[51 + offset];
-    pfd->comboCount = data[52 + offset];
-    pfd->lastHitBy = data[53 + offset];
-    pfd->stocks = data[54 + offset];
+    pfd.percent = readFloat(data, idx);
+    pfd.shieldSize = readFloat(data, idx);
+    pfd.lastMoveHitId = readByte(data, idx);
+    pfd.comboCount = readByte(data, idx);
+    pfd.lastHitBy = readByte(data, idx);
+    pfd.stocks = readByte(data, idx);
+
+    //Raw controller information
+    pfd.physicalButtons = readHalf(data, idx);
+    pfd.lTrigger = readFloat(data, idx);
+    pfd.rTrigger = readFloat(data, idx);
   }
 }
 
 void handleGameEnd() {
   uint8_t* data = Msg.data;
-
-  CurrentGame.winCondition = data[0];
+  int idx = 0;
+  
+  CurrentGame.winCondition = readByte(data, idx);
 }
 
 //**********************************************************************
@@ -331,11 +336,11 @@ void postConnectedMessage() {
 
 void postGameEndMessage() {
   if (client.connected()) {
-    StaticJsonBuffer<4000> jsonBuffer;
+    StaticJsonBuffer<10000> jsonBuffer;
     
     JsonObject& root = jsonBuffer.createObject();
     root["frames"] = CurrentGame.frameCounter;
-    root["framesMissed"] CurrentGame.framesMissed;
+    root["framesMissed"] = CurrentGame.framesMissed;
     root["winCondition"] = CurrentGame.winCondition;
 
     float totalActiveGameFrames = float(CurrentGame.frameCounter);
@@ -362,6 +367,8 @@ void postGameEndMessage() {
       
       item["recoveryAttempts"] = ps.recoveryAttempts;
       item["successfulRecoveries"] = ps.successfulRecoveries;
+      item["edgeguardChances"] = ps.edgeguardChances;
+      item["edgeguardConversions"] = ps.edgeguardConversions;
       
       JsonArray& stocks = item.createNestedArray("stocks");
       for (int j = 0; j < STOCK_COUNT; j++) {
@@ -370,6 +377,7 @@ void postGameEndMessage() {
         
         //Only log the stock if the player actually played that stock
         if (ss.isStockUsed) {
+          //Serial.println("Stock used.");
           JsonObject& stock = jsonBuffer.createObject();
         
           uint32_t stockFrames = ss.frame;
@@ -396,7 +404,7 @@ void postGameEndMessage() {
 //**********************************************************************
 //*                            Statistics
 //**********************************************************************
-int numberOfSetBits(uint32_t x) {
+int numberOfSetBits(uint16_t x) {
   //This function solves the Hamming Weight problem. Effectively it counts the number of bits in the input that are set to 1
   //This implementation is supposedly very efficient when most bits are zero. Found: https://en.wikipedia.org/wiki/Hamming_weight#Efficient_implementation
   int count;
@@ -451,21 +459,22 @@ void computeStatistics() {
     
     //------------------- Increment Action Count for APM Calculation --------------------------------
     //First count the number of buttons that go from 0 to 1
-    uint32_t buttonChanges = ~cp.previousFrameData.buttons & cp.currentFrameData.buttons;
+    uint16_t buttonChanges = (~cp.previousFrameData.physicalButtons & cp.currentFrameData.physicalButtons) & 0xFFF;
     cp.stats.actionCount += numberOfSetBits(buttonChanges); //Increment action count by amount of button presses
     
     //Increment action count when sticks change from one region to another. Don't increment when stick returns to deadzone
-    uint8_t prevAnalogRegion = getJoystickRegion(cp.prevFrameData.joystickX, cp.prevFrameData.joystickY);
+    uint8_t prevAnalogRegion = getJoystickRegion(cp.previousFrameData.joystickX, cp.previousFrameData.joystickY);
     uint8_t currentAnalogRegion = getJoystickRegion(cp.currentFrameData.joystickX, cp.currentFrameData.joystickY);
     if ((prevAnalogRegion != currentAnalogRegion) && (currentAnalogRegion != 0)) cp.stats.actionCount++;
     
     //Do the same for c-stick
-    uint8_t prevCstickRegion = getJoystickRegion(cp.prevFrameData.cstickX, cp.prevFrameData.cstickY);
+    uint8_t prevCstickRegion = getJoystickRegion(cp.previousFrameData.cstickX, cp.previousFrameData.cstickY);
     uint8_t currentCstickRegion = getJoystickRegion(cp.currentFrameData.cstickX, cp.currentFrameData.cstickY);
     if ((prevCstickRegion != currentCstickRegion) && (currentCstickRegion != 0)) cp.stats.actionCount++;
     
     //Increment action on analog trigger... I'm not sure when. This needs revision
-    if (cp.prevFrameData.trigger < 10 && cp.currentFrameData.trigger >= 10) cp.stats.actionCount++;
+    if (cp.previousFrameData.lTrigger < 0.3 && cp.currentFrameData.lTrigger >= 0.3) cp.stats.actionCount++;
+    if (cp.previousFrameData.rTrigger < 0.3 && cp.currentFrameData.rTrigger >= 0.3) cp.stats.actionCount++;
     
     //--------------------------- Recovery detection --------------------------------------------------
     bool isOffStage = checkIfOffStage(CurrentGame.stage, cp.currentFrameData.locationX, cp.currentFrameData.locationY);
@@ -495,6 +504,7 @@ void computeStatistics() {
       if (cp.flags.framesSinceLanding > FRAMES_LANDED_RECOVERY) {
         cp.stats.recoveryAttempts++;
         cp.stats.successfulRecoveries++;
+        op.stats.edgeguardChances++;
         resetRecoveryFlags(cp.flags);
       }
     }
@@ -502,6 +512,8 @@ void computeStatistics() {
       //TODO: Check if this function gets called on last stock lost
       //If player dies while recovering, consider it a failed recovery
       cp.stats.recoveryAttempts++;
+      op.stats.edgeguardChances++;
+      op.stats.edgeguardConversions++;
       resetRecoveryFlags(cp.flags);
     }
     
@@ -513,12 +525,12 @@ void computeStatistics() {
       s.frame = CurrentGame.frameCounter;
       s.percent = cp.currentFrameData.percent;
       s.lastHitBy = op.currentFrameData.lastMoveHitId; //This will indicate what this player was killed by
-      s.lastAnimation = cp.currentFrameData.animation; //Hopefully this will indicate the type of death
+      s.lastAnimation = cp.currentFrameData.animation; //What was character doing before death
     }
     
     //Mark last stock as lost if lostStock is true
     int prevStockIndex = stockIndex - 1;
-    if (lostStock && prevStockIndex >= 0 && prevStockIndex < STOCK_COUNT) cp.stats.stocks[prevStockIndex] = true;
+    if (lostStock && prevStockIndex >= 0 && prevStockIndex < STOCK_COUNT) cp.stats.stocks[prevStockIndex].isStockLost = true;
   }
 }
 
@@ -560,6 +572,13 @@ void debugPrintGameInfo() {
       Serial.print("Location Y: "); Serial.println(pfd->locationY);
       Serial.print("Stocks: "); Serial.println(pfd->stocks);
       Serial.print("Percent: "); Serial.println(pfd->percent);
+      Serial.print("Trigger: "); Serial.println(pfd->trigger);
+      Serial.print("LTrigger: "); Serial.println(pfd->lTrigger);
+      Serial.print("RTrigger: "); Serial.println(pfd->rTrigger);
+      Serial.print("PhysButtons: "); Serial.println(pfd->physicalButtons, BIN);
+//      Serial.print("Buttons: "); Serial.println(pfd->buttons, BIN);
+//      Serial.print("Joystick: "); Serial.print(pfd->joystickX); Serial.print(","); Serial.println(pfd->joystickY);
+//      Serial.print("Joystick: "); Serial.print(pfd->cstickX); Serial.print(","); Serial.println(pfd->cstickY);
     }
   }
 }
@@ -588,7 +607,6 @@ void loop() {
         case EVENT_GAME_END:
           handleGameEnd();
           postGameEndMessage();
-          CurrentGame.matchReported = true;
           break;
       }
     } else {
