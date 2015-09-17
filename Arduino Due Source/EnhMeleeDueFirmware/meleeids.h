@@ -1,8 +1,12 @@
 //Animation ID ranges
 #define DAMAGE_START 0x4B
 #define DAMAGE_END 0x5B
+#define CAPTURE_START 0xDF
+#define CAPTURE_END 0xE8
 #define GUARD_START 0xB2
 #define GUARD_END 0xB6
+#define GROUNDED_CONTROL_START 0xE
+#define GROUNDED_CONTROL_END 0x18
 
 //Animation ID specific
 #define ROLL_FORWARD 0xE9
@@ -12,6 +16,7 @@
 #define ACTION_WAIT 0xE
 #define ACTION_DASH 0x14
 #define ACTION_KNEE_BEND 0x18
+#define GUARD_ON 0xB2
 
 //Stage IDs
 #define STAGE_FOD 2

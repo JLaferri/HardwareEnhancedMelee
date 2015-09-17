@@ -370,6 +370,15 @@ void postGameEndMessage() {
       item["edgeguardChances"] = ps.edgeguardChances;
       item["edgeguardConversions"] = ps.edgeguardConversions;
       
+      //Combo string stuff
+      item["numberOfOpenings"] = ps.numberOfOpenings;
+      item["averageDamagePerString"] = ps.averageDamagePerString;
+      item["averageTimePerString"] = ps.averageTimePerString;
+      item["averageHitsPerString"] = ps.averageHitsPerString;
+      item["mostDamageString"] = ps.mostDamageString;
+      item["mostTimeString"] = ps.mostTimeString;
+      item["mostHitsString"] = ps.mostHitsString;
+      
       JsonArray& stocks = item.createNestedArray("stocks");
       for (int j = 0; j < STOCK_COUNT; j++) {
         //Serial.println(String("Writing out player ") + i + String(". Stock: ") + j);
@@ -387,6 +396,7 @@ void postGameEndMessage() {
           stock["percent"] = ss.percent;
           stock["moveLastHitBy"] = ss.lastHitBy;
           stock["lastAnimation"] = ss.lastAnimation;
+          stock["openingsAllowed"] = ss.killedInOpenings;
           stock["isStockLost"] = ss.isStockLost;
         
           stocks.add(stock);
@@ -437,6 +447,7 @@ void computeStatistics() {
     Player& op = p[!i]; //Other player
     
     bool lostStock = cp.previousFrameData.stocks - cp.currentFrameData.stocks > 0;
+    bool opntLostStock = cp.previousFrameData.stocks - cp.currentFrameData.stocks > 0;
     
     //Check current action states, although many of these conditions check previous frame data, it shouldn't matter for frame = 1 that there is no previous
     if (cp.currentFrameData.animation >= GUARD_START && cp.currentFrameData.animation <= GUARD_END) cp.stats.framesInShield++;
@@ -455,6 +466,46 @@ void computeStatistics() {
 
       //If frames without being hit is greater than previous, set new record
       if (cp.flags.framesWithoutDamage > cp.stats.mostFramesWithoutDamage) cp.stats.mostFramesWithoutDamage = cp.flags.framesWithoutDamage; 
+    }
+    
+    //------------------------------- Monitor Combo Strings -----------------------------------------
+    bool opntTookDamage = op.currentFrameData.percent - op.previousFrameData.percent > 0;
+    bool opntDamagedState = op.currentFrameData.animation >= DAMAGE_START && op.currentFrameData.animation <= DAMAGE_END;
+    bool opntGrabbedState = op.currentFrameData.animation >= CAPTURE_START && op.currentFrameData.animation <= CAPTURE_END;
+
+    //By looking for percent changes we can increment counter even when a player gets true combo'd
+    //The damage state requirement makes it so things like fox's lasers, grab pummels, pichu damaging self, etc
+    if (opntTookDamage && opntDamagedState) {
+      if (cp.flags.stringCount == 0) {
+        cp.flags.stringStartPercent = op.previousFrameData.percent;
+        cp.flags.stringStartFrame = CurrentGame.frameCounter;
+        cp.stats.numberOfOpenings++;
+      }
+      
+      cp.flags.stringCount++; //increment number of hits
+    }
+
+    //Reset combo string counter when somebody dies or doesn't get hit for too long
+    if (opntDamagedState || opntGrabbedState) cp.flags.stringResetCounter = 0;
+    else if (cp.flags.stringCount > 0) cp.flags.stringResetCounter++;
+
+    //Mark combo completed if opponent lost his stock or if the counter is greater than threshold frames
+    if (cp.flags.stringCount > 0 && (opntLostStock || cp.flags.stringResetCounter > COMBO_STRING_TIMEOUT)) {
+      //Store records
+      float percent = op.previousFrameData.percent - cp.flags.stringStartPercent;
+      uint32_t frames = CurrentGame.frameCounter - cp.flags.stringStartFrame;
+      uint16_t hits = cp.flags.stringCount;
+      
+      cp.stats.averageDamagePerString = ((cp.stats.numberOfOpenings - 1)*cp.stats.averageDamagePerString + percent) / cp.stats.numberOfOpenings;
+      cp.stats.averageTimePerString = ((cp.stats.numberOfOpenings - 1)*cp.stats.averageTimePerString + frames) / cp.stats.numberOfOpenings;
+      cp.stats.averageHitsPerString = ((cp.stats.numberOfOpenings - 1)*cp.stats.averageHitsPerString + hits) / cp.stats.numberOfOpenings;
+      
+      if (percent > cp.stats.mostDamageString) cp.stats.mostDamageString = percent;
+      if (frames > cp.stats.mostTimeString) cp.stats.mostTimeString = frames;
+      if (hits > cp.stats.mostHitsString) cp.stats.mostHitsString = hits;
+      
+      //Reset string count
+      cp.flags.stringCount = 0;
     }
     
     //------------------- Increment Action Count for APM Calculation --------------------------------
@@ -478,7 +529,7 @@ void computeStatistics() {
     
     //--------------------------- Recovery detection --------------------------------------------------
     bool isOffStage = checkIfOffStage(CurrentGame.stage, cp.currentFrameData.locationX, cp.currentFrameData.locationY);
-    bool isInControl = cp.currentFrameData.animation == ACTION_WAIT || cp.currentFrameData.animation == ACTION_DASH || cp.currentFrameData.animation == ACTION_KNEE_BEND;
+    bool isInControl = cp.currentFrameData.animation >= GROUNDED_CONTROL_START && cp.currentFrameData.animation <= GROUNDED_CONTROL_END;
     if (!cp.flags.isRecovering && !cp.flags.isHitOffStage && beingDamaged && isOffStage) {
       //If player took a hit off stage
       cp.flags.isHitOffStage = true;
@@ -530,7 +581,13 @@ void computeStatistics() {
     
     //Mark last stock as lost if lostStock is true
     int prevStockIndex = stockIndex - 1;
-    if (lostStock && prevStockIndex >= 0 && prevStockIndex < STOCK_COUNT) cp.stats.stocks[prevStockIndex].isStockLost = true;
+    if (lostStock && prevStockIndex >= 0 && prevStockIndex < STOCK_COUNT) {
+      int16_t prevOpenings = 0;
+      for (int i = prevStockIndex - 1; i >= 0; i--) prevOpenings += cp.stats.stocks[i].killedInOpenings;
+      
+      cp.stats.stocks[prevStockIndex].killedInOpenings = op.stats.numberOfOpenings - prevOpenings;
+      cp.stats.stocks[prevStockIndex].isStockLost = true;
+    }
   }
 }
 

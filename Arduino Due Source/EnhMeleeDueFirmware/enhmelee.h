@@ -19,6 +19,7 @@
 
 //For statistics
 #define FRAMES_LANDED_RECOVERY 60
+#define COMBO_STRING_TIMEOUT 60
 
 typedef struct {
   //Volatile data - this data will change throughout the course of the match
@@ -54,6 +55,12 @@ typedef struct {
   bool isLandedOnStage = false;
   uint8_t framesSinceLanding;
   
+  //Combo String
+  float stringStartPercent = 0;
+  uint32_t stringStartFrame = 0;
+  uint16_t stringCount = 0;
+  uint8_t stringResetCounter = 0;
+  
   uint32_t framesWithoutDamage;
 } PlayerFlags;
 
@@ -72,6 +79,9 @@ typedef struct {
   //uint16_t deathAnimation; //to implement
   bool isStockUsed;
   bool isStockLost;
+  
+  //Combo String
+  uint16_t killedInOpenings;
 } StockStatistics;
 
 typedef struct {
@@ -96,6 +106,15 @@ typedef struct {
   
   //APM
   uint16_t actionCount;
+  
+  //Combo Strings
+  float mostDamageString;
+  uint32_t mostTimeString; //longest amount of frame for a combo string
+  uint16_t mostHitsString; //most amount of hits in a combo string
+  uint16_t numberOfOpenings; //this is the number of time a player started a combo string
+  float averageDamagePerString;
+  float averageTimePerString;
+  float averageHitsPerString;
   
   StockStatistics stocks[STOCK_COUNT];
 } PlayerStatistics;
