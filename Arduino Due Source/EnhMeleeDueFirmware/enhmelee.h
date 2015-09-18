@@ -18,8 +18,8 @@
 #define JOYSTICK_DZ 9
 
 //For statistics
-#define FRAMES_LANDED_RECOVERY 60
-#define COMBO_STRING_TIMEOUT 60
+#define FRAMES_LANDED_RECOVERY 45
+#define COMBO_STRING_TIMEOUT 45
 
 typedef struct {
   //Volatile data - this data will change throughout the course of the match
@@ -97,6 +97,12 @@ typedef struct {
   uint16_t rollCount;
   uint16_t spotDodgeCount;
   uint16_t airDodgeCount;
+
+  //Tech stats - to be implemented
+  uint16_t techMissCount;
+  uint16_t techLeftCount;
+  uint16_t techRightCount;
+  uint16_t techPlaceCount;
   
   //Recovery
   uint16_t recoveryAttempts;
@@ -157,19 +163,20 @@ typedef struct {
 } RfifoMessage;
 
 bool checkIfOffStage(uint16_t stage, float x, float y) {
+  //Checks if player is off stage. These are the edge coordinates +5
   switch(stage) {
     case STAGE_FOD:
-      return x < -63.35 || x > 63.35 || y < 0;
+      return x < -68.35 || x > 68.35 || y < -10;
     case STAGE_POKEMON:
-      return x < -87.75 || x > 87.75 || y < 0;
+      return x < -92.75 || x > 92.75 || y < -10;
     case STAGE_YOSHIS:
-      return x < -56 || x > 56 || y < 0;
+      return x < -61 || x > 61 || y < -10;
     case STAGE_DREAM_LAND:
-      return x < -77.27 || x > 77.27 || y < 0;
+      return x < -82.27 || x > 82.27 || y < -10;
     case STAGE_BATTLEFIELD:
-      return x < -68.4 || x > 68.4 || y < 0;
+      return x < -73.4 || x > 73.4 || y < -10;
     case STAGE_FD:
-      return x < -85.5606 || x > 85.5606 || y < 0;
+      return x < -90.5606 || x > 90.5606 || y < -10;
     default:
       return false;
   }

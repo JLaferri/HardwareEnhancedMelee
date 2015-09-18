@@ -447,7 +447,7 @@ void computeStatistics() {
     Player& op = p[!i]; //Other player
     
     bool lostStock = cp.previousFrameData.stocks - cp.currentFrameData.stocks > 0;
-    bool opntLostStock = cp.previousFrameData.stocks - cp.currentFrameData.stocks > 0;
+    bool opntLostStock = op.previousFrameData.stocks - op.currentFrameData.stocks > 0;
     
     //Check current action states, although many of these conditions check previous frame data, it shouldn't matter for frame = 1 that there is no previous
     if (cp.currentFrameData.animation >= GUARD_START && cp.currentFrameData.animation <= GUARD_END) cp.stats.framesInShield++;
@@ -456,10 +456,9 @@ void computeStatistics() {
     else if (cp.currentFrameData.animation == SPOT_DODGE && cp.previousFrameData.animation != SPOT_DODGE) cp.stats.spotDodgeCount++;
     else if (cp.currentFrameData.animation == AIR_DODGE && cp.previousFrameData.animation != AIR_DODGE) cp.stats.airDodgeCount++;
     
-    bool beingDamaged = cp.currentFrameData.animation >= DAMAGE_START && cp.currentFrameData.animation <= DAMAGE_END;
-    
     //Check if we are getting damaged
-    if (beingDamaged) {
+    bool tookPercent = cp.currentFrameData.percent - cp.previousFrameData.percent > 0;
+    if (tookPercent) {
       cp.flags.framesWithoutDamage = 0;
     } else {
       cp.flags.framesWithoutDamage++; //Increment count of frames without taking damage
@@ -472,25 +471,28 @@ void computeStatistics() {
     bool opntTookDamage = op.currentFrameData.percent - op.previousFrameData.percent > 0;
     bool opntDamagedState = op.currentFrameData.animation >= DAMAGE_START && op.currentFrameData.animation <= DAMAGE_END;
     bool opntGrabbedState = op.currentFrameData.animation >= CAPTURE_START && op.currentFrameData.animation <= CAPTURE_END;
+    bool opntTechState = (op.currentFrameData.animation >= TECH_START && op.currentFrameData.animation <= TECH_END) ||
+      op.currentFrameData.animation == TECH_MISS_UP || op.currentFrameData.animation == TECH_MISS_DOWN;
 
     //By looking for percent changes we can increment counter even when a player gets true combo'd
     //The damage state requirement makes it so things like fox's lasers, grab pummels, pichu damaging self, etc
-    if (opntTookDamage && opntDamagedState) {
+    if (opntTookDamage && (opntDamagedState || opntGrabbedState)) {
       if (cp.flags.stringCount == 0) {
         cp.flags.stringStartPercent = op.previousFrameData.percent;
         cp.flags.stringStartFrame = CurrentGame.frameCounter;
         cp.stats.numberOfOpenings++;
+        //Serial.print(String("Player ") + (char)(65 + i)); Serial.println(" got an opening!");
       }
       
       cp.flags.stringCount++; //increment number of hits
     }
 
     //Reset combo string counter when somebody dies or doesn't get hit for too long
-    if (opntDamagedState || opntGrabbedState) cp.flags.stringResetCounter = 0;
+    if (opntDamagedState || opntGrabbedState || opntTechState) cp.flags.stringResetCounter = 0;
     else if (cp.flags.stringCount > 0) cp.flags.stringResetCounter++;
 
     //Mark combo completed if opponent lost his stock or if the counter is greater than threshold frames
-    if (cp.flags.stringCount > 0 && (opntLostStock || cp.flags.stringResetCounter > COMBO_STRING_TIMEOUT)) {
+    if (cp.flags.stringCount > 0 && (opntLostStock || lostStock || cp.flags.stringResetCounter > COMBO_STRING_TIMEOUT)) {
       //Store records
       float percent = op.previousFrameData.percent - cp.flags.stringStartPercent;
       uint32_t frames = CurrentGame.frameCounter - cp.flags.stringStartFrame;
@@ -503,6 +505,8 @@ void computeStatistics() {
       if (percent > cp.stats.mostDamageString) cp.stats.mostDamageString = percent;
       if (frames > cp.stats.mostTimeString) cp.stats.mostTimeString = frames;
       if (hits > cp.stats.mostHitsString) cp.stats.mostHitsString = hits;
+
+      //Serial.print(String("Player ") + (char)(65 + i)); Serial.println(" combo ended.");
       
       //Reset string count
       cp.flags.stringCount = 0;
@@ -530,41 +534,54 @@ void computeStatistics() {
     //--------------------------- Recovery detection --------------------------------------------------
     bool isOffStage = checkIfOffStage(CurrentGame.stage, cp.currentFrameData.locationX, cp.currentFrameData.locationY);
     bool isInControl = cp.currentFrameData.animation >= GROUNDED_CONTROL_START && cp.currentFrameData.animation <= GROUNDED_CONTROL_END;
+    bool beingDamaged = cp.currentFrameData.animation >= DAMAGE_START && cp.currentFrameData.animation <= DAMAGE_END;
+    bool beingGrabbed = cp.currentFrameData.animation >= CAPTURE_START && cp.currentFrameData.animation <= CAPTURE_END;
+    
     if (!cp.flags.isRecovering && !cp.flags.isHitOffStage && beingDamaged && isOffStage) {
       //If player took a hit off stage
       cp.flags.isHitOffStage = true;
+      Serial.print(String("Player ") + (char)(65 + i)); Serial.println(String(" off stage! (") + cp.currentFrameData.locationX + String(",") + cp.currentFrameData.locationY + String(")"));
     }
     else if (!cp.flags.isRecovering && cp.flags.isHitOffStage && !beingDamaged && isOffStage) {
       //If player exited damage state off stage
       cp.flags.isRecovering = true;
+      Serial.print(String("Player ") + (char)(65 + i)); Serial.println(" recovering!");
     }
-    else if ((cp.flags.isRecovering || cp.flags.isHitOffStage) && isInControl) {
+    else if (!cp.flags.isLandedOnStage && (cp.flags.isRecovering || cp.flags.isHitOffStage) && isInControl) {
       //If a player is in control of his character after recovering flag as landed
       cp.flags.isLandedOnStage = true;
+      Serial.print(String("Player ") + (char)(65 + i)); Serial.println(" landed!");
     }
     else if (cp.flags.isLandedOnStage && isOffStage) {
       //If player landed but is sent back off stage, continue recovery process
       cp.flags.framesSinceLanding = 0;
       cp.flags.isLandedOnStage = false;
     }
-    else if (cp.flags.isLandedOnStage && !isOffStage) {
-      //If player landed and is still on stage, increment frame counter
+    else if (cp.flags.isLandedOnStage && !isOffStage && !beingDamaged && !beingGrabbed) {
+      //If player landed, is still on stage, is not being hit, and is not grabbed, increment frame counter
       cp.flags.framesSinceLanding++;
       
       //If frame counter while on stage passes threshold, consider it a successful recovery
       if (cp.flags.framesSinceLanding > FRAMES_LANDED_RECOVERY) {
-        cp.stats.recoveryAttempts++;
-        cp.stats.successfulRecoveries++;
-        op.stats.edgeguardChances++;
+        if (cp.flags.isRecovering) {
+          cp.stats.recoveryAttempts++;
+          cp.stats.successfulRecoveries++;
+          op.stats.edgeguardChances++;
+          Serial.print(String("Player ") + (char)(65 + i)); Serial.println(" recovered!");
+        }
+        
         resetRecoveryFlags(cp.flags);
       }
     }
     else if (cp.flags.isRecovering && lostStock) {
-      //TODO: Check if this function gets called on last stock lost
       //If player dies while recovering, consider it a failed recovery
-      cp.stats.recoveryAttempts++;
-      op.stats.edgeguardChances++;
-      op.stats.edgeguardConversions++;
+      if (cp.flags.isRecovering) {
+        cp.stats.recoveryAttempts++;
+        op.stats.edgeguardChances++;
+        op.stats.edgeguardConversions++;
+        Serial.print(String("Player ") + (char)(65 + i)); Serial.println(" died recovering!");
+      }
+      
       resetRecoveryFlags(cp.flags);
     }
     
@@ -658,7 +675,7 @@ void loop() {
           break;
         case EVENT_UPDATE:
           handleUpdate();
-          debugPrintGameInfo();
+          //debugPrintGameInfo();
           computeStatistics();
           break;
         case EVENT_GAME_END:

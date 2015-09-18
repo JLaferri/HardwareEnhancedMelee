@@ -7,6 +7,8 @@
 #define GUARD_END 0xB6
 #define GROUNDED_CONTROL_START 0xE
 #define GROUNDED_CONTROL_END 0x18
+#define TECH_START 0xC7
+#define TECH_END 0xCC
 
 //Animation ID specific
 #define ROLL_FORWARD 0xE9
@@ -17,6 +19,8 @@
 #define ACTION_DASH 0x14
 #define ACTION_KNEE_BEND 0x18
 #define GUARD_ON 0xB2
+#define TECH_MISS_UP 0xB7
+#define TECH_MISS_DOWN 0xBF
 
 //Stage IDs
 #define STAGE_FOD 2
