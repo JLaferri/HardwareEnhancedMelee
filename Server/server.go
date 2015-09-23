@@ -4,7 +4,27 @@ import (
 	"bufio"
 	"fmt"
 	"net"
+	"os"
+	"time"
 )
+
+const summarySizeThreshold = 150
+
+const (
+	logName     = "Log.txt"
+	infoName    = "Info.json"
+	summaryMask = "Game%d.json"
+)
+
+var streamRoot string
+var localRoot string
+var results []string
+
+func init() {
+	localRoot = "C:/HardwareEnhancedMelee"
+	streamRoot = "Z:/Desktop/HTC Throwdown/HTC Throwdown/SWF"
+	results = make([]string, 0, 5)
+}
 
 func listenAndServe(conn net.Conn) {
 	//Close connection when done reading
@@ -19,22 +39,109 @@ func listenAndServe(conn net.Conn) {
 			fmt.Println("Error detected reading from connection.")
 			break
 		}
-		fmt.Print(string(message))
+		s := string(message)
+		fmt.Print(s)
+
+		//Append log file
+		err = os.Chdir(localRoot)
+		if err != nil {
+			fmt.Printf("Failed to change to local directory %s\n", localRoot)
+			continue
+		}
+
+		file, err := os.OpenFile(logName, os.O_APPEND, 0700)
+		if err != nil {
+			fmt.Println("Failed to open log file.", err)
+			if os.IsNotExist(err) {
+				file, err = os.Create(logName)
+				if err != nil {
+					fmt.Printf("Failed to create log file\n")
+				}
+			}
+		}
+
+		if file != nil {
+			file.WriteString(fmt.Sprintf("%v|%s", time.Now().String(), s))
+			err = file.Close()
+			if err != nil {
+				fmt.Println("Failed to close log file. ", err)
+			}
+		}
+
+		//Change directory to stream root
+		err = os.Chdir(streamRoot)
+		if err != nil {
+			fmt.Printf("Failed to change to stream directory %s\n", streamRoot)
+			continue
+		}
+
+		//Check size threshold to determine if this is a GameStart of GameEnd message
+		if len(s) > summarySizeThreshold {
+			//This is a GameEnd message
+			//Maintain a buffer of the 5 most recent GameEnd summaries
+			if len(results) >= 5 {
+				results = results[1:]
+			}
+			results = append(results, s)
+
+			//Write out game summary files for stream
+			num := 0
+			for i := len(results) - 1; i >= 0; i-- {
+				num++
+				fileName := fmt.Sprintf(summaryMask, num)
+				file, err = os.Create(fileName)
+				if err != nil {
+					fmt.Printf("Failed to create file %s in directory %s\n", fileName, streamRoot)
+					continue
+				}
+
+				_, err = file.WriteString(results[i])
+				if err != nil {
+					fmt.Printf("Failed to write file %s\n", fileName)
+				}
+
+				err = file.Close()
+				if err != nil {
+					fmt.Println("Failed to close summary file. ", err)
+				}
+			}
+		} else {
+			//This is a GameStart message
+			//Write out info
+			file, err := os.Create(infoName)
+			if err != nil {
+				fmt.Printf("Failed to create file %s in directory %s\n", infoName, streamRoot)
+				continue
+			}
+
+			_, err = file.WriteString(s)
+			if err != nil {
+				fmt.Printf("Failed to write file %s\n", infoName)
+			}
+
+			err = file.Close()
+			if err != nil {
+				fmt.Println("Failed to close info file. ", err)
+			}
+		}
+
 		conn.Write([]byte("\n"))
 	}
 }
 
 func main() {
-	//	go func() {
+	err := os.MkdirAll(localRoot, 0700)
+	if err != nil {
+		fmt.Println("Failed to make local directory ", localRoot)
+		return
+	}
 
-	//		http.Handle("/foo", fooHandler)
+	err = os.MkdirAll(streamRoot, 0700)
+	if err != nil {
+		fmt.Println("Failed to make stream directory ", streamRoot)
+		return
+	}
 
-	//		http.HandleFunc("/bar", func(w http.ResponseWriter, r *http.Request) {
-	//			fmt.Fprintf(w, "Hello, %q", html.EscapeString(r.URL.Path))
-	//		})
-
-	//		log.Fatal(http.ListenAndServe(":8080", nil))
-	//	}()
 	fmt.Println("Starting device server...")
 
 	ln, err := net.Listen("tcp", ":3636")

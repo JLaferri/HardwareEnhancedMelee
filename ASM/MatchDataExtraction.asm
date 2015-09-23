@@ -178,16 +178,32 @@ FU_WRITE_PLAYER:
 lis r3, 0x8045
 ori r3, r3, 0x3080
 mulli r4, r30, 0xE90
-add r4, r3, r4
-lwz r3, 0xB0(r4)
+add r29, r3, r4 #load static player memory address into r29
+lwz r31, 0xB0(r29) #load player address into r31
 
 #skip this player if not in game
-cmpwi r3, 0
+cmpwi r31, 0
 beq FU_INCREMENT
 
-mr r29, r4 #load static player memory address into r29
-mr r31, r3 #load player address into r31
+#check for sleep action state to load alternate character (sheik/zelda)
+lwz r3,0x70(r31) #load action state ID
+cmpwi r3, 0xB #compare to sleep state
+bne FU_WRITE_CHAR_BLOCK #if not sleep state, continue as normal
 
+lwz r4, 0xB4(r29) #sheik/zelda in sleep action, fetch other character's pointer
+cmpwi r4, 0
+beq FU_WRITE_CHAR_BLOCK #if pointer is zero, it is not sheik/zelda (or ics)
+
+#ensure the character is not popo or nana (dont think this is needed)
+#lwz r3,0x64(r31) #load internal char ID
+#cmpwi r3,0xA #check popo
+#beq FU_WRITE_CHAR_BLOCK
+#cmpwi r3,0xB #check nana
+#beq FU_WRITE_CHAR_BLOCK
+
+mr r31, r4
+
+FU_WRITE_CHAR_BLOCK:
 lwz r3,0x64(r31) #load internal char ID
 bl sendByteExi
 lwz r3,0x70(r31) #load action state ID

@@ -229,7 +229,7 @@ void handleGameEnd() {
 
 // the media access control (ethernet hardware) address for the shield:
 byte mac[] = { 0x90, 0xA2, 0xDA, 0x0F, 0x70, 0x6C };
-IPAddress server(192, 168, 0, 2);
+IPAddress server(192, 168, 1, 21);
 int port = 3636;
 
 EthernetClient client;
