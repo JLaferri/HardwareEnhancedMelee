@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
-	"strconv"
+	"math"
 	"strings"
 	"time"
 )
@@ -58,6 +58,7 @@ type playerParameters struct {
 	Character  uint8 `json:"character"`
 	Color      uint8 `json:"color"`
 	PlayerType uint8 `json:"type"`
+	Name       string
 }
 
 type matchParameters struct {
@@ -70,20 +71,17 @@ type matchParameters struct {
 type gameData struct {
 	params  *matchParameters
 	summary *matchSummary
-	winner  int
+
+	winner int
 }
 
 type setResult struct {
-	sectionId   int
-	roundId     int
-	player1Name string
-	player2Name string
-	winnerName  string
-	startTime   time.Time
-	endTime     time.Time
-
-	winnerId int
-	games    []gameData
+	winnerName string
+	loserName  string
+	winner     int
+	winnerWins int
+	loserWins  int
+	games      []gameData
 }
 
 var externalCharacterNames = []string{
@@ -159,32 +157,17 @@ var stages = []string{
 }
 
 const (
-	logFilePath     = "C:/HardwareEnhancedMelee/HTC_Throwdown_Stream.txt"
-	resultsFilePath = "C:/HardwareEnhancedMelee/HTC_SMASHGG_Sets.txt"
+	filePath = "C:/HardwareEnhancedMelee/BracketMatchesAsSets.txt"
 )
 
 const (
 	helloMsgThreshold      = 50
 	parametersMsgThreshold = 150
-	logTimeFormat          = "2006-01-02 15:04:05.9999999 -0700 MST"
-	resultsTimeFormat      = time.RFC3339
-	bo5Id                  = 6528
+	timeFormat             = "2006-01-02 15:04:05.9999999 -0700 MST"
 )
 
-// Filter returns a new slice holding only
-// the elements of s that satisfy f()
-func filter(s []gameData, fn func(gameData) bool) []gameData {
-	var p []gameData // == nil
-	for _, v := range s {
-		if fn(v) {
-			p = append(p, v)
-		}
-	}
-	return p
-}
-
 func main() {
-	bytes, err := ioutil.ReadFile(logFilePath)
+	bytes, err := ioutil.ReadFile(filePath)
 	if err != nil {
 		fmt.Println(err)
 		return
@@ -193,18 +176,27 @@ func main() {
 
 	lines := strings.Split(s, "\r\n")
 
-	matches := []gameData{}
-	match := gameData{}
+	sets := []*setResult{}
+	var set *setResult
+	var game *gameData
 	for _, v := range lines {
 		//Separate time and json
-		vSplit := strings.Split(v, "|")
-		if len(vSplit) != 2 {
-			fmt.Printf("Line in log %s was invalid.\n", v)
+
+		if len(v) < 40 {
+			names := strings.Split(v, "\t")
+			if len(names) != 2 {
+				fmt.Println("Failed to parse names. ", err)
+				continue
+			}
+
+			set = &setResult{names[0], names[1], 0, 0, 0, nil}
+			sets = append(sets, set)
 			continue
 		}
 
+		vSplit := strings.Split(v, "|")
 		//Attempt to read time of log message
-		time, err := time.Parse(logTimeFormat, vSplit[0])
+		time, err := time.Parse(timeFormat, vSplit[0])
 		if err != nil {
 			fmt.Println("Failed to parse time stamp. ", err)
 			continue
@@ -220,173 +212,150 @@ func main() {
 			params := matchParameters{}
 			err := json.Unmarshal([]byte(jsonData), &params)
 			if err != nil {
-				fmt.Println("Error unmarshalling match parameters. ", err)
-				break
+				fmt.Println("Error unmarshalling game parameters. ", err)
+				continue
 			}
 
 			params.Timestamp = time
-			match.params = &params
-		case match.params != nil:
+			game = &gameData{&params, nil, 0}
+		case game.params != nil:
 			summary := matchSummary{}
 			err := json.Unmarshal([]byte(jsonData), &summary)
 			if err != nil {
-				fmt.Println("Error unmarshalling match summary. ", err)
+				fmt.Println("Error unmarshalling game summary. ", err)
 				break
 			}
 
 			summary.Timestamp = time
-			match.summary = &summary
-			matches = append(matches, match)
-			match = gameData{}
+			game.summary = &summary
+			set.games = append(set.games, *game)
 		}
 	}
 
-	var cpuCount, earlyRqCount, lowApmCount int
-	//Filter matches that are probably not real matches
-	matches = filter(matches, func(g gameData) bool {
-		for _, v := range g.params.Players {
-			if v.PlayerType == 1 {
-				cpuCount++
-				return false //If match included a CPU, filter it out
-			}
-		}
-
-		playersAbove1Stock := true
-		for _, v := range g.summary.Players {
-			if v.StocksRemaining <= 1 {
-				playersAbove1Stock = false
-			}
-
-			if v.Apm < 30 {
-				lowApmCount++
-				return false
-			}
-		}
-
-		if playersAbove1Stock && g.summary.WinCondition == 0 {
-			earlyRqCount++
-			return false
-		}
-
-		return true
-	})
-
-	fmt.Println("Filtering results:")
-	fmt.Println("Low APM: ", lowApmCount)
-	fmt.Println("CPU: ", cpuCount)
-	fmt.Println("Early RQ: ", earlyRqCount)
-
-	//Load results data from smashgg
-	bytes, err = ioutil.ReadFile(resultsFilePath)
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
-	s = string(bytes)
-
-	sets := []setResult{}
-	lines = strings.Split(s, "\r\n")
-	for _, v := range lines {
-		result := setResult{}
-		vSplit := strings.Split(v, "\t")
-		if len(vSplit) != 8 {
-			fmt.Println("Format of line in results file is not correct. ", v)
-			continue
-		}
-
-		val, err := strconv.ParseInt(vSplit[1], 10, 0)
-		if err != nil {
-			fmt.Println(err)
-			continue
-		}
-		result.sectionId = int(val)
-
-		val, err = strconv.ParseInt(vSplit[2], 10, 0)
-		if err != nil {
-			fmt.Println(err)
-			continue
-		}
-		result.roundId = int(val)
-
-		result.player1Name = vSplit[3]
-		result.player2Name = vSplit[4]
-
-		result.startTime, err = time.Parse(resultsTimeFormat, vSplit[5])
-		if err != nil {
-			fmt.Println(err)
-			continue
-		}
-
-		result.endTime, err = time.Parse(resultsTimeFormat, vSplit[6])
-		if err != nil {
-			fmt.Println(err)
-			continue
-		}
-
-		result.winnerName = vSplit[7]
-
-		sets = append(sets, result)
-	}
-
-	//Iterage through sets backwards and try to match games to it
-	for i := len(sets) - 1; i >= 0; i-- {
-		set := &sets[i]
-
-		winsRequired := 2
-		if set.sectionId == bo5Id {
-			winsRequired = 3
-		}
-
-		var p1WinCount, p2WinCount int
-		for {
-			if len(matches) <= 0 {
-				break
-			}
-			match := matches[len(matches)-1]
-			matches = matches[:len(matches)-1]
-
-			if match.summary.Players[0].StocksRemaining > match.summary.Players[1].StocksRemaining {
-				p1WinCount++
-				match.winner = 1
-			} else if match.summary.Players[1].StocksRemaining > match.summary.Players[0].StocksRemaining {
-				p2WinCount++
-				match.winner = 2
-			}
-
-			set.games = append(set.games, match)
-
-			if p1WinCount >= winsRequired {
-				set.winnerId = 1
-				break
-			} else if p2WinCount >= winsRequired {
-				set.winnerId = 2
-				break
-			}
-		}
-	}
-
-	fmt.Println("End Time\tPlayer1\tPlayer2\tSet Winner\tGame Winner\tStage\tP1 Char\tP2 Char\tP1 Stocks\tP2 Stocks")
+	//Calculate winners and losers
 	for _, set := range sets {
+		var p1Wins, p2Wins int
 		var p1Name, p2Name string
-		if set.winnerId == 1 {
-			p1Name = set.winnerName
-			p2Name = set.player1Name
-			if p1Name == p2Name {
-				p2Name = set.player2Name
-			}
-		} else {
-			p1Name = set.player1Name
-			p2Name = set.winnerName
-			if p1Name == p2Name {
-				p1Name = set.player2Name
+		for i := 0; i < len(set.games); i++ {
+			game := &set.games[i]
+			switch {
+			case game.summary.Players[1].StocksRemaining == 0:
+				game.winner = 1
+				p1Wins++
+			case game.summary.Players[0].StocksRemaining == 0:
+				game.winner = 2
+				p2Wins++
 			}
 		}
 
-		for i := len(set.games) - 1; i >= 0; i-- {
-			game := set.games[i]
-			fmt.Printf("%s\t%s\t%s\t%d\t%d\t%s\t%s\t%s\t%d\t%d\n", game.summary.Timestamp.String(), p1Name, p2Name, set.winnerId, game.winner, stages[game.params.Stage],
-				externalCharacterNames[game.params.Players[0].Character], externalCharacterNames[game.params.Players[1].Character],
-				game.summary.Players[0].StocksRemaining, game.summary.Players[1].StocksRemaining)
+		if p1Wins > p2Wins {
+			set.winner = 1
+			set.winnerWins = p1Wins
+			set.loserWins = p2Wins
+			p1Name = set.winnerName
+			p2Name = set.loserName
+
+		} else {
+			set.winner = 2
+			set.winnerWins = p2Wins
+			set.loserWins = p1Wins
+			p1Name = set.loserName
+			p2Name = set.winnerName
+		}
+
+		for i := 0; i < len(set.games); i++ {
+			game := &set.games[i]
+			game.params.Players[0].Name = p1Name
+			game.params.Players[1].Name = p2Name
 		}
 	}
+
+	//Print set info
+	fmt.Printf("Set ID\tWinner\tLoser\tWinner Wins\tLoser Wins\tDuration (Seconds)\r\n")
+	for i, set := range sets {
+		startTime := set.games[0].params.Timestamp
+		endTime := set.games[len(set.games)-1].summary.Timestamp
+		duration := endTime.Sub(startTime)
+		fmt.Printf("%d\t%s\t%s\t%d\t%d\t%v\r\n", i, set.winnerName, set.loserName, set.winnerWins, set.loserWins, duration.Seconds())
+	}
+	fmt.Println()
+
+	//Print game info
+	fmt.Printf("Set ID\tGame ID\tPlayer\tOpponent\tWin/Loss\tStage\tCharacter\tOpponent Character\tTime (Seconds)\tStocks Remaining\tAPM\tTime Closest Center (%%)\t" +
+		"Time Above (%%)\tTime Shielding (%%)\tAir Dodge Count\tRoll Count\tSpot Dodge Count\tSuccessful Recoveries\tRecovery Attempts\t" +
+		"Edgeguard Conversions\tEdgeguard Chances\tNumber of Openings\tAverage Damage/String\tAverage Hits/String\tAverage Time/String (seconds)\t" +
+		"Most Damage String\tMost Hits String\tMost Time String (seconds)\tKill Count\tAverage Kill Percent\tDeath Count\tAverage Death Percent\t" +
+		"Damage Done\tDamage Taken\r\n")
+	for i, set := range sets {
+		for j, game := range set.games {
+			resultStrings := []string{"Win", "Loss"}
+			if game.winner == 2 {
+				resultStrings[0], resultStrings[1] = resultStrings[1], resultStrings[0]
+			}
+
+			for k := 0; k < 2; k++ {
+				ok := int(math.Abs(float64(k - 1)))
+				cpParams := game.params.Players[k]
+				opParams := game.params.Players[ok]
+				cpSummary := game.summary.Players[k]
+				opSummary := game.summary.Players[ok]
+
+				var killCount, deathCount int
+				var killPercentSum, deathPercentSum, damageDone, damageTaken float32
+				for _, stock := range opSummary.Stocks {
+					if stock.IsStockLost {
+						killCount++
+						killPercentSum += stock.Percent
+					}
+					damageDone += stock.Percent
+				}
+
+				for _, stock := range cpSummary.Stocks {
+					if stock.IsStockLost {
+						deathCount++
+						deathPercentSum += stock.Percent
+					}
+					damageTaken += stock.Percent
+				}
+
+				fmt.Printf("%d\t%d\t%s\t%s\t%s\t%s\t%s\t%s\t%v\t%v\t%v\t%v\t%v\t%v\t%v\t%v\t%v\t%v\t%v\t%v\t%v\t%v\t%v\t%v\t%v\t%v\t%v\t%v\t%v\t%v\t%v\t%v\t%v\t%v\r\n",
+					i, j, cpParams.Name, opParams.Name, resultStrings[k], stages[game.params.Stage], externalCharacterNames[cpParams.Character],
+					externalCharacterNames[opParams.Character], float32(game.summary.Frames)/60, cpSummary.StocksRemaining,
+					cpSummary.Apm, cpSummary.PercentTimeClosestCenter, cpSummary.PercentTimeAboveOthers, cpSummary.PercentTimeInShield,
+					cpSummary.AirDodgeCount, cpSummary.RollCount, cpSummary.SpotDodgeCount, cpSummary.SuccessfulRecoveries,
+					cpSummary.RecoveryAttempts, cpSummary.EdgeguardConversions, cpSummary.EdgeguardChances, cpSummary.NumberOfOpenings,
+					cpSummary.AverageDamagePerString, cpSummary.AverageHitsPerString, float32(cpSummary.AverageTimePerString)/60,
+					cpSummary.MostDamageString, cpSummary.MostHitsString, float32(cpSummary.MostTimeString)/60, killCount, killPercentSum/float32(killCount),
+					deathCount, deathPercentSum/float32(deathCount), damageDone, damageTaken)
+			}
+		}
+	}
+	fmt.Println()
+
+	//Print kill info
+	fmt.Printf("Set ID\tGame ID\tKill ID\tPlayer\tOpponent\tWin/Loss\tStage\tCharacter\tOpponent Character\tTime (seconds)\tPercent\tKill Move\tOpenings Required\r\n")
+	for i, set := range sets {
+		for j, game := range set.games {
+			resultStrings := []string{"Win", "Loss"}
+			if game.winner == 2 {
+				resultStrings[0], resultStrings[1] = resultStrings[1], resultStrings[0]
+			}
+
+			for k := 0; k < 2; k++ {
+				ok := int(math.Abs(float64(k - 1)))
+				cpParams := game.params.Players[k]
+				opParams := game.params.Players[ok]
+				opSummary := game.summary.Players[ok]
+
+				for l, stock := range opSummary.Stocks {
+					if stock.IsStockLost {
+						fmt.Printf("%d\t%d\t%d\t%s\t%s\t%s\t%s\t%s\t%s\t%v\t%v\t%v\t%v\r\n",
+							i, j, l, cpParams.Name, opParams.Name, resultStrings[k], stages[game.params.Stage], externalCharacterNames[cpParams.Character],
+							externalCharacterNames[opParams.Character], stock.TimeSeconds, stock.Percent, stock.MoveLastHitBy, stock.OpeningsAllowed)
+					}
+				}
+			}
+		}
+	}
+	fmt.Println()
 }
