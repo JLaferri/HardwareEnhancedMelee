@@ -34,7 +34,7 @@ li r30, 3 #load last player number first
 LAST_PLAYER_CHECK:
 lis r3, 0x8045
 ori r3, r3, 0x3130
-mulli r4, r30, 0xE90 #computer address of this player's pointer
+mulli r4, r30, 0xE90 #compute address of this player's pointer
 add r3, r3, r4
 lwz r3, 0x0(r3)
 cmpwi r3,0
@@ -141,11 +141,12 @@ bl sendByteExi #send OnMatchEnd event code
 #check byte that will tell us whether the game was won by stock loss or by ragequit
 lis r3, 0x8047
 lbz r3, -0x4960(r3)
-bl sendByteExi #send win condition byte. this byte will be 0 on ragequit, 1 or 3 on win by stock loss
+bl sendByteExi #send win condition byte. this byte will be 0 on ragequit, 3 on win by stock loss
 
 bl endExiTransfer #stop transfer
 b CLEANUP
 
+#----------- FRAME_UPDATE_CHECKS -----------
 PRE_UPDATE_CHECKS:
 #check if we are on game frame zero (countdown freeze time), if so, skip update
 cmpwi r3,0

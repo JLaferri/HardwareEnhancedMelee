@@ -108,9 +108,9 @@ void rfifoReadMessage() {
 
     //Load byte into buffer
     Msg.data[i] = readValue;
-	
-	  //Keep track of the number of bytes read (this is in case we miss reads we will know how many we did successfully read)
-	  Msg.bytesRead = i + 1;
+  
+    //Keep track of the number of bytes read (this is in case we miss reads we will know how many we did successfully read)
+    Msg.bytesRead = i + 1;
   }
   
   Msg.success = true;
@@ -266,7 +266,7 @@ void ethernetConnect() {
 int ethernetCheckConnection() {
   //Checks if connection is working. If it isn't, attempt to reconnect.
   if(!client) {
-	  client.stop();
+    client.stop();
     ethernetInitialize();
     return -1;
   }
@@ -424,19 +424,19 @@ int numberOfSetBits(uint16_t x) {
 
 void computeStatistics() {
   //this function will only get called when frameCount >= 1
-	uint32_t framesSinceStart = CurrentGame.frameCounter - 1;
+  uint32_t framesSinceStart = CurrentGame.frameCounter - 1;
   
-	Player* p = CurrentGame.players;
-	
-	float p1CenterDistance = sqrt(pow(p[0].currentFrameData.locationX, 2) + pow(p[0].currentFrameData.locationY, 2));
-	float p2CenterDistance = sqrt(pow(p[1].currentFrameData.locationX, 2) + pow(p[1].currentFrameData.locationY, 2));
-	
-	p[0].stats.averageDistanceFromCenter = (framesSinceStart*p[0].stats.averageDistanceFromCenter + p1CenterDistance) / (framesSinceStart + 1);
-	p[1].stats.averageDistanceFromCenter = (framesSinceStart*p[1].stats.averageDistanceFromCenter + p2CenterDistance) / (framesSinceStart + 1);
-	
-	//Increment frame counter of person who is closest to center. If the players are even distances from the center, do not increment
-	if (p1CenterDistance < p2CenterDistance) p[0].stats.framesClosestCenter++;
-	else if (p2CenterDistance < p1CenterDistance) p[1].stats.framesClosestCenter++;
+  Player* p = CurrentGame.players;
+  
+  float p1CenterDistance = sqrt(pow(p[0].currentFrameData.locationX, 2) + pow(p[0].currentFrameData.locationY, 2));
+  float p2CenterDistance = sqrt(pow(p[1].currentFrameData.locationX, 2) + pow(p[1].currentFrameData.locationY, 2));
+  
+  p[0].stats.averageDistanceFromCenter = (framesSinceStart*p[0].stats.averageDistanceFromCenter + p1CenterDistance) / (framesSinceStart + 1);
+  p[1].stats.averageDistanceFromCenter = (framesSinceStart*p[1].stats.averageDistanceFromCenter + p2CenterDistance) / (framesSinceStart + 1);
+  
+  //Increment frame counter of person who is closest to center. If the players are even distances from the center, do not increment
+  if (p1CenterDistance < p2CenterDistance) p[0].stats.framesClosestCenter++;
+  else if (p2CenterDistance < p1CenterDistance) p[1].stats.framesClosestCenter++;
 
   //Increment frame counter of person who is highest;
   if (p[0].currentFrameData.locationY > p[1].currentFrameData.locationY) p[0].stats.framesAboveOthers++;
@@ -475,7 +475,7 @@ void computeStatistics() {
       op.currentFrameData.animation == TECH_MISS_UP || op.currentFrameData.animation == TECH_MISS_DOWN;
 
     //By looking for percent changes we can increment counter even when a player gets true combo'd
-    //The damage state requirement makes it so things like fox's lasers, grab pummels, pichu damaging self, etc
+    //The damage state requirement makes it so things like fox's lasers, grab pummels, pichu damaging self, etc don't increment count
     if (opntTookDamage && (opntDamagedState || opntGrabbedState)) {
       if (cp.flags.stringCount == 0) {
         cp.flags.stringStartPercent = op.previousFrameData.percent;
