@@ -1,8 +1,8 @@
 #include <SPI.h>
 #include <Ethernet.h>
 #include <ArduinoJson.h>
-#include <SSI3DMASlave.h>
 
+#include "SSI3DMASlave.h"
 #include "enhmelee.h"
 
 //**********************************************************************
@@ -471,18 +471,19 @@ void computeStatistics() {
     bool isInControl = cp.currentFrameData.animation >= GROUNDED_CONTROL_START && cp.currentFrameData.animation <= GROUNDED_CONTROL_END;
     bool beingDamaged = cp.currentFrameData.animation >= DAMAGE_START && cp.currentFrameData.animation <= DAMAGE_END;
     bool beingGrabbed = cp.currentFrameData.animation >= CAPTURE_START && cp.currentFrameData.animation <= CAPTURE_END;
+    bool isDying = cp.currentFrameData.animation >= DYING_START && cp.currentFrameData.animation <= DYING_END;
     
     if (!cp.flags.isRecovering && !cp.flags.isHitOffStage && beingDamaged && isOffStage) {
       //If player took a hit off stage
       cp.flags.isHitOffStage = true;
       Serial.print(String("Player ") + (char)(65 + i)); Serial.println(String(" off stage! (") + cp.currentFrameData.locationX + String(",") + cp.currentFrameData.locationY + String(")"));
     }
-    else if (!cp.flags.isRecovering && cp.flags.isHitOffStage && !beingDamaged && isOffStage) {
+    else if (!cp.flags.isRecovering && cp.flags.isHitOffStage && !beingDamaged && !isDying && isOffStage) {
       //If player exited damage state off stage
       cp.flags.isRecovering = true;
-      Serial.print(String("Player ") + (char)(65 + i)); Serial.println(" recovering!");
+      Serial.print(String("Player ") + (char)(65 + i)); Serial.println(String(" recovering! (") + String(cp.currentFrameData.animation, HEX) + String(")"));
     }
-    else if (!cp.flags.isLandedOnStage && (cp.flags.isRecovering || cp.flags.isHitOffStage) && isInControl) {
+    else if (!cp.flags.isLandedOnStage && (cp.flags.isRecovering || cp.flags.isHitOffStage) && isInControl && !isOffStage) {
       //If a player is in control of his character after recovering flag as landed
       cp.flags.isLandedOnStage = true;
       Serial.print(String("Player ") + (char)(65 + i)); Serial.println(" landed!");
@@ -508,13 +509,17 @@ void computeStatistics() {
         resetRecoveryFlags(cp.flags);
       }
     }
-    else if (cp.flags.isRecovering && lostStock) {
+    
+    if ((cp.flags.isRecovering || cp.flags.isHitOffStage) && lostStock) {
       //If player dies while recovering, consider it a failed recovery
       if (cp.flags.isRecovering) {
         cp.stats.recoveryAttempts++;
         op.stats.edgeguardChances++;
         op.stats.edgeguardConversions++;
         Serial.print(String("Player ") + (char)(65 + i)); Serial.println(" died recovering!");
+      }
+      else if (cp.flags.isHitOffStage) {
+        Serial.print(String("Player ") + (char)(65 + i)); Serial.println(" died outright!");
       }
       
       resetRecoveryFlags(cp.flags);
@@ -548,7 +553,6 @@ void computeStatistics() {
 //**********************************************************************
 void setup() {
   Serial.begin(115200);
-  Serial.println("Hello");
   
   ethernetInitialize();
   asmEventsInitialize();

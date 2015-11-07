@@ -22,7 +22,7 @@ var results []string
 
 func init() {
 	localRoot = "C:/HardwareEnhancedMelee"
-	streamRoot = "Z:/Desktop/HTC Throwdown/HTC Throwdown/SWF"
+	streamRoot = "C:/HardwareEnhancedMelee/Stream"
 	results = make([]string, 0, 5)
 }
 

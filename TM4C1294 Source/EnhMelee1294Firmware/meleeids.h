@@ -9,6 +9,8 @@
 #define GROUNDED_CONTROL_END 0x18
 #define TECH_START 0xC7
 #define TECH_END 0xCC
+#define DYING_START 0x0
+#define DYING_END 0xA
 
 //Animation ID specific
 #define ROLL_FORWARD 0xE9
