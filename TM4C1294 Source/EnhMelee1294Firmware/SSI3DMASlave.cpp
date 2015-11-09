@@ -170,75 +170,58 @@ void SSI3DMASlaveClass::configureSSI3() {
           SSI_MODE_SLAVE, SPI_CLOCK / 12, 8);
 
   ROM_SSIEnable(SSI3_BASE);
-  ROM_SSIDMAEnable(SSI3_BASE, SSI_DMA_RX);
+  ROM_SSIDMAEnable(SSI3_BASE, SSI_DMA_RX | SSI_DMA_TX);
 }
 
 void SSI3DMASlaveClass::configureDMA() {
-	//
-    // Enable the uDMA controller at the system level.  Enable it to continue
-    // to run while the processor is in sleep.
-    //
-    ROM_SysCtlPeripheralEnable(SYSCTL_PERIPH_UDMA);
-    ROM_SysCtlPeripheralSleepEnable(SYSCTL_PERIPH_UDMA);
+  //Enable uDMA
+  ROM_SysCtlPeripheralEnable(SYSCTL_PERIPH_UDMA);
+  ROM_SysCtlPeripheralSleepEnable(SYSCTL_PERIPH_UDMA);
 
-    IntRegister(INT_UDMAERR, uDMAErrorHandler);
+  //Register DMA interrupt to handler
+  IntRegister(INT_UDMAERR, uDMAErrorHandler);
+  
+  //Enable interrupt
+  ROM_IntEnable(INT_UDMAERR);
 
-	//
-    // Enable the uDMA controller error interrupt.  This interrupt will occur
-    // if there is a bus error during a transfer.
-    //
-    ROM_IntEnable(INT_UDMAERR);
+  // Enable the uDMA controller.
+  ROM_uDMAEnable();
 
-    //
-    // Enable the uDMA controller.
-    //
-    ROM_uDMAEnable();
+  // Point at the control table to use for channel control structures.
+  ROM_uDMAControlBaseSet(pui8ControlTable);
 
-    //
-    // Point at the control table to use for channel control structures.
-    //
-    ROM_uDMAControlBaseSet(pui8ControlTable);
+  //Assign DMA channels to SSI3
+  ROM_uDMAChannelAssign(UDMA_CH14_SSI3RX);
+  ROM_uDMAChannelAssign(UDMA_CH15_SSI3TX);
 
-    //Assign DMA channels to SSI3
-    ROM_uDMAChannelAssign(UDMA_CH14_SSI3RX);
-    ROM_uDMAChannelAssign(UDMA_CH15_SSI3TX);
+  // Put the attributes in a known state for the uDMA SSI0RX channel.  These
+  // should already be disabled by default.
+  ROM_uDMAChannelAttributeDisable(UDMA_CH14_SSI3RX, UDMA_ATTR_USEBURST | UDMA_ATTR_ALTSELECT |
+    (UDMA_ATTR_HIGH_PRIORITY | UDMA_ATTR_REQMASK));
 
-	//
-    // Put the attributes in a known state for the uDMA SSI0RX channel.  These
-    // should already be disabled by default.
-    //
-    ROM_uDMAChannelAttributeDisable(UDMA_CH14_SSI3RX,
-                                    UDMA_ATTR_USEBURST | UDMA_ATTR_ALTSELECT |
-                                    (UDMA_ATTR_HIGH_PRIORITY |
-                                    UDMA_ATTR_REQMASK));
-
-    //ROM_uDMAChannelAttributeEnable(UDMA_CH14_SSI3RX, UDMA_ATTR_USEBURST);
-
-    //
-    // Configure the control parameters for the primary control structure for
-    // the SSIORX channel.
-    //
-    ROM_uDMAChannelControlSet(UDMA_CH14_SSI3RX | UDMA_PRI_SELECT,
-                              UDMA_SIZE_8 | UDMA_SRC_INC_NONE | UDMA_DST_INC_8 |
-                              UDMA_ARB_4);
+  // Configure the control parameters for the primary control structure for
+  // the SSIORX channel.
+  ROM_uDMAChannelControlSet(UDMA_CH14_SSI3RX | UDMA_PRI_SELECT,
+                            UDMA_SIZE_8 | UDMA_SRC_INC_NONE | UDMA_DST_INC_8 |
+                            UDMA_ARB_4);
 
 
-	//Enable DMA channel to write in the next buffer position
-	ROM_uDMAChannelTransferSet(UDMA_CH14_SSI3RX | UDMA_PRI_SELECT,
-							   UDMA_MODE_BASIC,
-							   (void *)(SSI3_BASE + SSI_O_DR),
-							   g_ui8SSIRxBuf[g_ui8RxWriteIndex], sizeof(g_ui8SSIRxBuf[g_ui8RxWriteIndex]));
+//Enable DMA channel to write in the next buffer position
+ROM_uDMAChannelTransferSet(UDMA_CH14_SSI3RX | UDMA_PRI_SELECT,
+               UDMA_MODE_BASIC,
+               (void *)(SSI3_BASE + SSI_O_DR),
+               g_ui8SSIRxBuf[g_ui8RxWriteIndex], sizeof(g_ui8SSIRxBuf[g_ui8RxWriteIndex]));
 
-	// Configure TX
+// Configure TX
 
-	//
-	// Put the attributes in a known state for the uDMA SSI0TX channel.  These
-	// should already be disabled by default.
-	//
-//	ROM_uDMAChannelAttributeDisable(UDMA_CH15_SSI3TX,
-//									UDMA_ATTR_ALTSELECT |
-//									UDMA_ATTR_HIGH_PRIORITY |
-//									UDMA_ATTR_REQMASK);
+//
+// Put the attributes in a known state for the uDMA SSI0TX channel.  These
+// should already be disabled by default.
+//
+ROM_uDMAChannelAttributeDisable(UDMA_CH15_SSI3TX,
+                UDMA_ATTR_ALTSELECT |
+                UDMA_ATTR_HIGH_PRIORITY |
+                UDMA_ATTR_REQMASK);
 //
 //	//
 //	// Set the USEBURST attribute for the uDMA SSI0TX channel.  This will
@@ -265,7 +248,7 @@ void SSI3DMASlaveClass::configureDMA() {
 //							   (void *)(SSI3_BASE + SSI_O_DR),
 //							   sizeof(g_ui8SSITxBuf));
 
-	ROM_uDMAChannelEnable(UDMA_CH14_SSI3RX);
+ROM_uDMAChannelEnable(UDMA_CH14_SSI3RX);
 //	ROM_uDMAChannelEnable(UDMA_CH15_SSI3TX);
 
 //	//
