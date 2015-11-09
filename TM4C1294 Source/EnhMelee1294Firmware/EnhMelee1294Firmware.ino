@@ -441,7 +441,7 @@ void computeStatistics() {
       if (frames > cp.stats.mostTimeString) cp.stats.mostTimeString = frames;
       if (hits > cp.stats.mostHitsString) cp.stats.mostHitsString = hits;
 
-      //Serial.print(String("Player ") + (char)(65 + i)); Serial.println(" combo ended.");
+      //Serial.print(String("Player ") + (char)(65 + i)); Serial.println(String(" combo ended. (") + percent + String("%, ") + hits + String(" hits, ") + frames + String(" frames)"));
       
       //Reset string count
       cp.flags.stringCount = 0;
@@ -476,17 +476,17 @@ void computeStatistics() {
     if (!cp.flags.isRecovering && !cp.flags.isHitOffStage && beingDamaged && isOffStage) {
       //If player took a hit off stage
       cp.flags.isHitOffStage = true;
-      Serial.print(String("Player ") + (char)(65 + i)); Serial.println(String(" off stage! (") + cp.currentFrameData.locationX + String(",") + cp.currentFrameData.locationY + String(")"));
+      //Serial.print(String("Player ") + (char)(65 + i)); Serial.println(String(" off stage! (") + cp.currentFrameData.locationX + String(",") + cp.currentFrameData.locationY + String(")"));
     }
     else if (!cp.flags.isRecovering && cp.flags.isHitOffStage && !beingDamaged && !isDying && isOffStage) {
       //If player exited damage state off stage
       cp.flags.isRecovering = true;
-      Serial.print(String("Player ") + (char)(65 + i)); Serial.println(String(" recovering! (") + String(cp.currentFrameData.animation, HEX) + String(")"));
+      //Serial.print(String("Player ") + (char)(65 + i)); Serial.println(String(" recovering! (") + String(cp.currentFrameData.animation, HEX) + String(")"));
     }
     else if (!cp.flags.isLandedOnStage && (cp.flags.isRecovering || cp.flags.isHitOffStage) && isInControl && !isOffStage) {
       //If a player is in control of his character after recovering flag as landed
       cp.flags.isLandedOnStage = true;
-      Serial.print(String("Player ") + (char)(65 + i)); Serial.println(" landed!");
+      //Serial.print(String("Player ") + (char)(65 + i)); Serial.println(" landed!");
     }
     else if (cp.flags.isLandedOnStage && isOffStage) {
       //If player landed but is sent back off stage, continue recovery process
@@ -503,7 +503,7 @@ void computeStatistics() {
           cp.stats.recoveryAttempts++;
           cp.stats.successfulRecoveries++;
           op.stats.edgeguardChances++;
-          Serial.print(String("Player ") + (char)(65 + i)); Serial.println(" recovered!");
+          //Serial.print(String("Player ") + (char)(65 + i)); Serial.println(" recovered!");
         }
         
         resetRecoveryFlags(cp.flags);
@@ -516,19 +516,19 @@ void computeStatistics() {
         cp.stats.recoveryAttempts++;
         op.stats.edgeguardChances++;
         op.stats.edgeguardConversions++;
-        Serial.print(String("Player ") + (char)(65 + i)); Serial.println(" died recovering!");
+        //Serial.print(String("Player ") + (char)(65 + i)); Serial.println(" died recovering!");
       }
       else if (cp.flags.isHitOffStage) {
-        Serial.print(String("Player ") + (char)(65 + i)); Serial.println(" died outright!");
+        //Serial.print(String("Player ") + (char)(65 + i)); Serial.println(" died outright!");
       }
       
       resetRecoveryFlags(cp.flags);
     }
     
     //-------------------------- Stock specific stuff -------------------------------------------------
-    int stockIndex = STOCK_COUNT - cp.currentFrameData.stocks;
-    if (stockIndex >= 0 && stockIndex < STOCK_COUNT) {
-      StockStatistics& s = cp.stats.stocks[stockIndex];
+    int prevStockIndex = STOCK_COUNT - cp.previousFrameData.stocks;
+    if (prevStockIndex >= 0 && prevStockIndex < STOCK_COUNT) {
+      StockStatistics& s = cp.stats.stocks[prevStockIndex];
       s.isStockUsed = true;
       s.frame = CurrentGame.frameCounter;
       s.percent = cp.currentFrameData.percent;
@@ -537,13 +537,14 @@ void computeStatistics() {
     }
     
     //Mark last stock as lost if lostStock is true
-    int prevStockIndex = stockIndex - 1;
     if (lostStock && prevStockIndex >= 0 && prevStockIndex < STOCK_COUNT) {
       int16_t prevOpenings = 0;
       for (int i = prevStockIndex - 1; i >= 0; i--) prevOpenings += cp.stats.stocks[i].killedInOpenings;
       
       cp.stats.stocks[prevStockIndex].killedInOpenings = op.stats.numberOfOpenings - prevOpenings;
       cp.stats.stocks[prevStockIndex].isStockLost = true;
+      
+      Serial.print(String("Player ") + (char)(65 + i)); Serial.println(String(" lost a stock. (") + cp.currentFrameData.animation + String(", ") + cp.previousFrameData.animation + String(")"));
     }
   }
 }
