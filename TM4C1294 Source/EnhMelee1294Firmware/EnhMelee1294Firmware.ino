@@ -1,9 +1,11 @@
 #include <SPI.h>
 #include <Ethernet.h>
+#include <EthernetUdp.h>
 #include <ArduinoJson.h>
 
 #include "SSI3DMASlave.h"
 #include "enhmelee.h"
+#include "Flash.h"
 
 //**********************************************************************
 //*                         ASM Event Codes
@@ -33,7 +35,7 @@ void spiReadMessage() {
   Msg = { false, 0, 0, 0, 0 };
   
   //Wait until a message is available
-  while (!SSI3DMASlave.isMessageAvailable()) Ethernet.maintain();
+  while (!SSI3DMASlave.isMessageAvailable()) ethernetCheckConnection();
   
   uint32_t messageSize = SSI3DMASlave.getMessageSize();
   uint8_t* bytes = SSI3DMASlave.popMessage();
@@ -157,48 +159,75 @@ void handleGameEnd() {
 }
 
 //**********************************************************************
-//*                           Ethernet
+//*                        Ethernet
 //**********************************************************************
-#define LED_PIN 13
 #define DELAY_TIME 10000
+#define UDP_MAX_PACKET_SIZE 100
 
 // the media access control (ethernet hardware) address for the shield:
-byte mac[] = { 0x90, 0xA2, 0xDA, 0x0F, 0x70, 0x6C };
+byte mac[] = { 0x00, 0x1A, 0xB6, 0x02, 0xF5, 0x8C };
 IPAddress server(192, 168, 0, 3);
 int port = 3636;
+IPAddress debugServer(192, 168, 0, 3);
+int udpPort = 3637;
+
+char udpPacketBuffer[UDP_MAX_PACKET_SIZE];
+long lastReconnectMs = 0;
 
 EthernetClient client;
+EthernetUDP udp;
 
 void ethernetInitialize() {
-  pinMode(LED_PIN, OUTPUT);
-
-  Serial.println("Attempting to obtain IP address from DHCP");
+  if (lastReconnectMs == 0 || millis() - lastReconnectMs > DELAY_TIME) {
+    debugPrintln("Attempting to obtain IP address from DHCP");
+    
+    // start the Ethernet connection:
+    if (Ethernet.begin(mac) == 0) {
+      debugPrintln("Failed to configure Ethernet using DHCP");
+      return;
+    }
   
-  // start the Ethernet connection:
-  if (Ethernet.begin(mac) == 0) {
-    Serial.println("Failed to configure Ethernet using DHCP");
-    delay(DELAY_TIME);
-    return;
+    debugPrint("Obtained IP address: "); debugPrintln(String(Ethernet.localIP()));
+  
+    udpConnect();
+    ethernetConnect();
+  
+    lastReconnectMs = millis();
   }
+}
 
-  Serial.print("Obtained IP address: "); Serial.println(Ethernet.localIP());
-
-  ethernetConnect();
+void udpConnect() {
+    int code = udp.begin(udpPort);
+    if (code) {
+      debugPrintln("UDP successfully started!");
+      postConnectedMessage();
+    } else {
+      debugPrint("Failed to start UDP. Code: "); debugPrintln(String(code));
+    }
 }
 
 void ethernetConnect() {
-  Serial.print("Trying to connect to: "); Serial.println(server);
-  int code = client.connect(server, port);
-  if (code) {
-    Serial.println("Connected to server!");
-    postConnectedMessage();
-  } else {
-    Serial.print("Failed to connect to server. Code: "); Serial.println(code);
-    delay(DELAY_TIME);
+  if (lastReconnectMs == 0 || millis() - lastReconnectMs > DELAY_TIME) {
+    debugPrint("Trying to connect to: "); debugPrintln(String(server));
+    int code = client.connect(server, port);
+    if (code) {
+      debugPrintln("Connected to server!");
+      postConnectedMessage();
+    } else {
+      debugPrint("Failed to connect to server. Code: "); debugPrintln(String(code));
+    }
+    
+    lastReconnectMs = millis();
   }
 }
 
 int ethernetCheckConnection() {
+  //Check if UDP packet has been received
+  int packetSize = udp.parsePacket();
+  if (packetSize) {
+    handleReceiveUdp(packetSize);
+  }
+  
   //Checks if connection is working. If it isn't, attempt to reconnect.
   if(!client) {
     client.stop();
@@ -206,24 +235,53 @@ int ethernetCheckConnection() {
     return -1;
   }
 
+  //Check if we are connected to a server. If not, attempt to reconnect.
   if (!client.connected()) {
     client.stop();
     Ethernet.maintain();
     ethernetConnect();
     return -2;
   }
-
+  
   Ethernet.maintain();
   return 1;
 }
 
-void blinkEndlessly(uint32_t msDelay) {
-  for(;;) {
-     digitalWrite(LED_PIN, HIGH);
-     delay(msDelay);
-     digitalWrite(LED_PIN, LOW);
-     delay(msDelay);
-  }
+void handleReceiveUdp(int size) {
+  if (size > UDP_MAX_PACKET_SIZE) return;
+  
+  //Get IP and port of the UDP sender
+  IPAddress sourceIp = udp.remoteIP();
+  int sourcePort = udp.remotePort();
+  
+  //Read json from udp packet
+  udp.read(udpPacketBuffer, UDP_MAX_PACKET_SIZE);
+  
+  StaticJsonBuffer<UDP_MAX_PACKET_SIZE> jsonBuffer;
+  JsonObject& root = jsonBuffer.parseObject(udpPacketBuffer);
+  
+  //Parse json for command
+  int command = root["command"];
+  debugPrintln("Received UDP packet with command: " + String(command));
+  
+  //Handle command received
+  switch(command) {
+    case 1:
+      StaticJsonBuffer<200> jsonBuffer;
+  
+      JsonObject& resp = jsonBuffer.createObject();
+      JsonArray& macBytes = resp.createNestedArray("mac");
+      for (int i = 0; i < sizeof(mac); i++) macBytes.add(mac[i]);
+    
+      resp["ip"] = String(Ethernet.localIP());
+      resp["port"] = String(udpPort);
+      
+      udp.beginPacket(sourceIp, sourcePort);
+      resp.printTo(udp);
+      udp.endPacket();
+      
+      break;
+  }     
 }
 
 //**********************************************************************
@@ -282,7 +340,7 @@ void postGameEndMessage() {
     
     JsonArray& data = root.createNestedArray("players");
     for (int i = 0; i < PLAYER_COUNT; i++) {
-      //Serial.println(String("Writing out player ") + i);
+      //debugPrintln(String("Writing out player ") + i);
       PlayerStatistics& ps = CurrentGame.players[i].stats;
       JsonObject& item = jsonBuffer.createObject();
 
@@ -316,12 +374,12 @@ void postGameEndMessage() {
       
       JsonArray& stocks = item.createNestedArray("stocks");
       for (int j = 0; j < STOCK_COUNT; j++) {
-        //Serial.println(String("Writing out player ") + i + String(". Stock: ") + j);
+        //debugPrintln(String("Writing out player ") + i + String(". Stock: ") + j);
         StockStatistics& ss = ps.stocks[j];
         
         //Only log the stock if the player actually played that stock
         if (ss.isStockUsed) {
-          //Serial.println("Stock used.");
+          //debugPrintln("Stock used.");
           JsonObject& stock = jsonBuffer.createObject();
         
           uint32_t stockFrames = ss.frame;
@@ -416,7 +474,7 @@ void computeStatistics() {
         cp.flags.stringStartPercent = op.previousFrameData.percent;
         cp.flags.stringStartFrame = CurrentGame.frameCounter;
         cp.stats.numberOfOpenings++;
-        //Serial.print(String("Player ") + (char)(65 + i)); Serial.println(" got an opening!");
+        //debugPrint(String("Player ") + (char)(65 + i)); debugPrintln(" got an opening!");
       }
       
       cp.flags.stringCount++; //increment number of hits
@@ -441,7 +499,7 @@ void computeStatistics() {
       if (frames > cp.stats.mostTimeString) cp.stats.mostTimeString = frames;
       if (hits > cp.stats.mostHitsString) cp.stats.mostHitsString = hits;
 
-      //Serial.print(String("Player ") + (char)(65 + i)); Serial.println(String(" combo ended. (") + percent + String("%, ") + hits + String(" hits, ") + frames + String(" frames)"));
+      //debugPrint(String("Player ") + (char)(65 + i)); debugPrintln(String(" combo ended. (") + percent + String("%, ") + hits + String(" hits, ") + frames + String(" frames)"));
       
       //Reset string count
       cp.flags.stringCount = 0;
@@ -476,17 +534,17 @@ void computeStatistics() {
     if (!cp.flags.isRecovering && !cp.flags.isHitOffStage && beingDamaged && isOffStage) {
       //If player took a hit off stage
       cp.flags.isHitOffStage = true;
-      //Serial.print(String("Player ") + (char)(65 + i)); Serial.println(String(" off stage! (") + cp.currentFrameData.locationX + String(",") + cp.currentFrameData.locationY + String(")"));
+      //debugPrint(String("Player ") + (char)(65 + i)); debugPrintln(String(" off stage! (") + cp.currentFrameData.locationX + String(",") + cp.currentFrameData.locationY + String(")"));
     }
     else if (!cp.flags.isRecovering && cp.flags.isHitOffStage && !beingDamaged && !isDying && isOffStage) {
       //If player exited damage state off stage
       cp.flags.isRecovering = true;
-      //Serial.print(String("Player ") + (char)(65 + i)); Serial.println(String(" recovering! (") + String(cp.currentFrameData.animation, HEX) + String(")"));
+      //debugPrint(String("Player ") + (char)(65 + i)); debugPrintln(String(" recovering! (") + String(cp.currentFrameData.animation, HEX) + String(")"));
     }
     else if (!cp.flags.isLandedOnStage && (cp.flags.isRecovering || cp.flags.isHitOffStage) && isInControl && !isOffStage) {
       //If a player is in control of his character after recovering flag as landed
       cp.flags.isLandedOnStage = true;
-      //Serial.print(String("Player ") + (char)(65 + i)); Serial.println(" landed!");
+      //debugPrint(String("Player ") + (char)(65 + i)); debugPrintln(" landed!");
     }
     else if (cp.flags.isLandedOnStage && isOffStage) {
       //If player landed but is sent back off stage, continue recovery process
@@ -503,7 +561,7 @@ void computeStatistics() {
           cp.stats.recoveryAttempts++;
           cp.stats.successfulRecoveries++;
           op.stats.edgeguardChances++;
-          //Serial.print(String("Player ") + (char)(65 + i)); Serial.println(" recovered!");
+          //debugPrint(String("Player ") + (char)(65 + i)); debugPrintln(" recovered!");
         }
         
         resetRecoveryFlags(cp.flags);
@@ -516,10 +574,10 @@ void computeStatistics() {
         cp.stats.recoveryAttempts++;
         op.stats.edgeguardChances++;
         op.stats.edgeguardConversions++;
-        //Serial.print(String("Player ") + (char)(65 + i)); Serial.println(" died recovering!");
+        //debugPrint(String("Player ") + (char)(65 + i)); debugPrintln(" died recovering!");
       }
       else if (cp.flags.isHitOffStage) {
-        //Serial.print(String("Player ") + (char)(65 + i)); Serial.println(" died outright!");
+        //debugPrint(String("Player ") + (char)(65 + i)); debugPrintln(" died outright!");
       }
       
       resetRecoveryFlags(cp.flags);
@@ -544,7 +602,7 @@ void computeStatistics() {
       cp.stats.stocks[prevStockIndex].killedInOpenings = op.stats.numberOfOpenings - prevOpenings;
       cp.stats.stocks[prevStockIndex].isStockLost = true;
       
-      Serial.print(String("Player ") + (char)(65 + i)); Serial.println(String(" lost a stock. (") + cp.currentFrameData.animation + String(", ") + cp.previousFrameData.animation + String(")"));
+      debugPrint(String("Player ") + (char)(65 + i)); debugPrintln(String(" lost a stock. (") + cp.currentFrameData.animation + String(", ") + cp.previousFrameData.animation + String(")"));
     }
   }
 }
@@ -552,50 +610,74 @@ void computeStatistics() {
 //**********************************************************************
 //*                             Setup
 //**********************************************************************
+void checkFlashErase() {
+  pinMode(PJ_0, INPUT);
+  
+  if (digitalRead(PJ_0) == HIGH) {
+    debugPrintln("Erasing flash...");
+    eraseFlash(); 
+    debugPrintln("Flash erased?");
+  }
+}
+
 void setup() {
-  Serial.begin(115200);
+  debugPrintln("Starting initialization.");
   
   ethernetInitialize();
   asmEventsInitialize();
   spiSlaveInitialize();
+  
+  debugPrintln("Initialization complete.");
 }
 
 //**********************************************************************
 //*                             Debug
 //**********************************************************************
 void debugPrintMatchParams() {
-  Serial.println(String("Stage: (") + CurrentGame.stage + String(") ") + String(stages[CurrentGame.stage]));
+  debugPrintln(String("Stage: (") + CurrentGame.stage + String(") ") + String(stages[CurrentGame.stage]));
   for (int i = 0; i < PLAYER_COUNT; i++) {
     Player* p = &CurrentGame.players[i];
-    Serial.println(String("Player ") + (char)(65 + i));
-    Serial.print("Port: "); Serial.println(p->controllerPort + 1, DEC);
-    Serial.println(String("Character: (") + p->characterId + String(") ") + String(externalCharacterNames[p->characterId]));
-    Serial.println(String("Color: (") + p->characterColor + String(") ") + String(colors[p->characterColor]));
+    debugPrintln(String("Player ") + (char)(65 + i));
+    debugPrint("Port: "); debugPrintln(String(p->controllerPort + 1, DEC));
+    debugPrintln(String("Character: (") + p->characterId + String(") ") + String(externalCharacterNames[p->characterId]));
+    debugPrintln(String("Color: (") + p->characterColor + String(") ") + String(colors[p->characterColor]));
   }
 }
 
 void debugPrintGameInfo() {
   if (CurrentGame.frameCounter % 600 == 0) {
-    Serial.println(String("Frame: ") + CurrentGame.frameCounter);
-    Serial.println(String("Frames missed: ") + CurrentGame.framesMissed);
-    Serial.print("Random seed: "); Serial.println(CurrentGame.randomSeed, HEX);
+    debugPrintln(String("Frame: ") + CurrentGame.frameCounter);
+    debugPrintln(String("Frames missed: ") + CurrentGame.framesMissed);
+    debugPrint("Random seed: "); debugPrintln(String(CurrentGame.randomSeed, HEX));
     for (int i = 0; i < PLAYER_COUNT; i++) {
       Player* p = &CurrentGame.players[i];
       PlayerFrameData* pfd = &p->currentFrameData;
-      Serial.println(String("Player ") + (char)(65 + i));
-      Serial.print("Location X: "); Serial.println(pfd->locationX);
-      Serial.print("Location Y: "); Serial.println(pfd->locationY);
-      Serial.print("Stocks: "); Serial.println(pfd->stocks);
-      Serial.print("Percent: "); Serial.println(pfd->percent);
-      Serial.print("Trigger: "); Serial.println(pfd->trigger);
-      Serial.print("LTrigger: "); Serial.println(pfd->lTrigger);
-      Serial.print("RTrigger: "); Serial.println(pfd->rTrigger);
-      Serial.print("PhysButtons: "); Serial.println(pfd->physicalButtons, BIN);
-//      Serial.print("Buttons: "); Serial.println(pfd->buttons, BIN);
-//      Serial.print("Joystick: "); Serial.print(pfd->joystickX); Serial.print(","); Serial.println(pfd->joystickY);
-//      Serial.print("Joystick: "); Serial.print(pfd->cstickX); Serial.print(","); Serial.println(pfd->cstickY);
+      debugPrintln(String("Player ") + (char)(65 + i));
+      debugPrint("Location X: "); debugPrintln(String(pfd->locationX));
+      debugPrint("Location Y: "); debugPrintln(String(pfd->locationY));
+      debugPrint("Stocks: "); debugPrintln(String(pfd->stocks));
+      debugPrint("Percent: "); debugPrintln(String(pfd->percent));
+      debugPrint("Trigger: "); debugPrintln(String(pfd->trigger));
+      debugPrint("LTrigger: "); debugPrintln(String(pfd->lTrigger));
+      debugPrint("RTrigger: "); debugPrintln(String(pfd->rTrigger));
+      debugPrint("PhysButtons: "); debugPrintln(String(pfd->physicalButtons, BIN));
+//      debugPrint("Buttons: "); debugPrintln(pfd->buttons, BIN);
+//      debugPrint("Joystick: "); debugPrint(pfd->joystickX); debugPrint(","); debugPrintln(pfd->joystickY);
+//      debugPrint("Joystick: "); debugPrint(pfd->cstickX); debugPrint(","); debugPrintln(pfd->cstickY);
     }
   }
+}
+
+void debugPrintln(String s) {
+   debugPrint(s + String("\r\n"));
+}
+
+void debugPrint(String s) {
+   udp.beginPacket(debugServer, udpPort);
+   char buffer[s.length() + 1];
+   s.toCharArray(buffer, sizeof(buffer));
+   udp.write(buffer);
+   udp.endPacket();
 }
 
 //**********************************************************************
@@ -625,9 +707,10 @@ void loop() {
           break;
       }
     } else {
-      Serial.print("Failed to read message.");
+      debugPrintln("Failed to read message.");
     }
   }
 }
+
 
 

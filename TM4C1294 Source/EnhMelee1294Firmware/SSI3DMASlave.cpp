@@ -222,15 +222,7 @@ ROM_uDMAChannelAttributeDisable(UDMA_CH15_SSI3TX,
                 UDMA_ATTR_ALTSELECT |
                 UDMA_ATTR_HIGH_PRIORITY |
                 UDMA_ATTR_REQMASK);
-//
-//	//
-//	// Set the USEBURST attribute for the uDMA SSI0TX channel.  This will
-//	// force the controller to always use a burst when transferring data from
-//	// the TX buffer to the SSI0.  This is somewhat more effecient bus usage
-//	// than the default which allows single or burst transfers.
-//	//
-//	//ROM_uDMAChannelAttributeEnable(UDMA_CH15_SSI3TX, UDMA_ATTR_USEBURST);
-//
+
 //	//
 //	// Configure the control parameters for the primary control structure for
 //	// the SSIORX channel.
@@ -307,3 +299,4 @@ void SSI3DMASlaveClass::queueResponse(uint8_t* data, int length) {
 } 
 
 SSI3DMASlaveClass SSI3DMASlave;
+
