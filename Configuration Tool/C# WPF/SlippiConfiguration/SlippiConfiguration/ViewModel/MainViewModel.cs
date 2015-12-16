@@ -12,12 +12,16 @@ using System.Net;
 using System.Reactive.Linq;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
+using NLog;
+using Fizzi.Applications.SlippiConfiguration.Model;
 
 namespace Fizzi.Applications.SlippiConfiguration.ViewModel
 {
     class MainViewModel : INotifyPropertyChanged
     {
         public string Version { get { return Assembly.GetExecutingAssembly().GetName().Version.ToString(); } }
+
+        private static Logger logger = LogManager.GetCurrentClassLogger();
 
         private bool _isBusy;
         public bool IsBusy { get { return _isBusy; } set { this.RaiseAndSetIfChanged("IsBusy", ref _isBusy, value, PropertyChanged); } }
@@ -42,7 +46,7 @@ namespace Fizzi.Applications.SlippiConfiguration.ViewModel
 
                 UdpClient client = new UdpClient();
                 IPEndPoint ip = new IPEndPoint(IPAddress.Broadcast, 3637);
-                byte[] bytes = Encoding.ASCII.GetBytes("{\"type\":1}");
+                byte[] bytes = Encoding.ASCII.GetBytes(string.Format("{{\"type\":{0}}}", (int)MessageType.Discovery));
                 client.Send(bytes, bytes.Length, ip);
                 
                 //Log current time
@@ -65,8 +69,8 @@ namespace Fizzi.Applications.SlippiConfiguration.ViewModel
 
                         //Parse JSON
                         var json = JObject.Parse(Encoding.ASCII.GetString(response));
-                        int command = json["type"].Value<int>();
-                        if (command != 1) continue;
+                        var command = json["type"].Value<MessageType>();
+                        if (command != MessageType.Discovery) continue;
 
                         //Add device
                         var macString = json["mac"].Value<string>();
@@ -86,26 +90,29 @@ namespace Fizzi.Applications.SlippiConfiguration.ViewModel
                     {
                         if (client.Available > 0)
                         {
-                            IPEndPoint endpoint = null;
-                            var response = client.Receive(ref endpoint);
-
-                            SlippiDevice device;
-                            if (Devices.TryGetValue(endpoint.Address, out device))
+                            try
                             {
-                                //Parse JSON
-                                var json = JObject.Parse(Encoding.ASCII.GetString(response));
-                                int command = json["type"].Value<int>();
-                                if (command != 3) continue;
+                                //Receive UDP message
+                                IPEndPoint endpoint = null;
+                                var response = client.Receive(ref endpoint);
 
-                                //Get string and append to log
-                                var message = json["message"].Value<string>();
-                                device.AppendLog(message);
+                                //Check if the UDP message received comes from a Slippi Device we detected during our last scan
+                                SlippiDevice device;
+                                if (Devices.TryGetValue(endpoint.Address, out device))
+                                {
+                                    device.HandleUdpMessage(response);
+                                }
+                            }
+                            catch(Exception ex)
+                            {
+                                logger.Error(ex, "Error encountered listening for debug messages.");
                             }
                         }
                     }
-                });
+                }, System.Reactive.Concurrency.TaskPoolScheduler.Default);
             }, () => IsBusy = true, () => IsBusy = false, ex =>
             {
+                logger.Error(ex, "Error encountered executing scan for devices.");
                 MessageBox.Show(window, ex.NewLineDelimitedMessages(), "Error", MessageBoxButton.OK, MessageBoxImage.Error);
                 IsBusy = false;
             });

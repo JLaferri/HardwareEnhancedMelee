@@ -6,8 +6,26 @@
         xmlns:sys="clr-namespace:System;assembly=mscorlib"
         Height="550" Width="700">
     <Window.Title>
-        <Binding Path="Version" StringFormat="Window Name ({0})" Mode="OneTime" />
+        <Binding Path="Version" StringFormat="Slippi Configuration Tool ({0})" Mode="OneTime" />
     </Window.Title>
+    <Window.Resources>
+        <ControlTemplate x:Key="VerticalGroupDisplay" TargetType="GroupBox">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+
+                <Border Grid.Row="0" BorderBrush="#8E9BBC" BorderThickness="1" Background="#4D6082" SnapsToDevicePixels="True">
+                    <ContentPresenter ContentSource="Header" RecognizesAccessKey="True" />
+                </Border>
+
+                <Border Grid.Row="1" BorderBrush="#8E9BBC" BorderThickness="1,0,1,1" Background="#4D6082" SnapsToDevicePixels="True">
+                    <ContentPresenter />
+                </Border>
+            </Grid>
+        </ControlTemplate>
+    </Window.Resources>
     <Window.Style>
         <Style TargetType="Window">
             <Style.Triggers>
@@ -17,7 +35,7 @@
             </Style.Triggers>
         </Style>
     </Window.Style>
-    <Grid>
+    <Grid Background="#293955">
         <Grid.Style>
             <Style TargetType="Grid">
                 <Style.Triggers>
@@ -35,18 +53,109 @@
         </Grid.ColumnDefinitions>
         
         <Grid.RowDefinitions>
+            <RowDefinition Height="2*" MinHeight="27" />
             <RowDefinition Height="Auto" />
-            <RowDefinition Height="2*" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="*" />
+            <RowDefinition Height="*" MinHeight="27" />
         </Grid.RowDefinitions>
         
         <!-- Left Side items -->
-        <Button Grid.Column="0" Grid.Row="0" Margin="3" Content="Scan" Command="{Binding ScanDevices}" />
-        <DataGrid Grid.Column="0" Grid.Row="1" ItemsSource="{Binding Devices}" SelectedValuePath="Value" SelectedValue="{Binding SelectedDevice}" />
+        <GroupBox Margin="3,3,3,0" Grid.Column="0" Grid.Row="0" Template="{StaticResource VerticalGroupDisplay}">
+            <GroupBox.Header>
+                <Grid>
+                    <TextBlock Margin="3" VerticalAlignment="Center" Text="Device List" Foreground="White" />
+                    
+                    <Button Margin="1" HorizontalAlignment="Right" Command="{Binding ScanDevices}">
+                        <Button.Content>
+                            <Border Name="HitTestBorder" Background="#00FFFFFF" CornerRadius="2">
+                                <Image Stretch="None" Margin="2">
+                                    <Image.Style>
+                                        <Style TargetType="Image">
+                                            <Setter Property="Source" Value="/SlippiConfiguration;component/refreshicon.png" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding ElementName=HitTestBorder, Path=IsMouseOver}" Value="True">
+                                                    <Setter Property="Source" Value="/SlippiConfiguration;component/refreshicon_hover.png" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Image.Style>
+                                </Image>
+                            </Border>
+                        </Button.Content>
+                        <Button.Template>
+                            <ControlTemplate TargetType="Button">
+                                <Border CornerRadius="2">
+                                    <Border.Style>
+                                        <Style TargetType="Border">
+                                            <Style.Triggers>
+                                                <Trigger Property="IsMouseOver" Value="True">
+                                                    <Setter Property="Background" Value="WhiteSmoke" />
+                                                </Trigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Border.Style>
+                                    <ContentPresenter />
+                                </Border>
+                            </ControlTemplate>
+                        </Button.Template>
+                    </Button>
+                </Grid>
+            </GroupBox.Header>
+
+            <DataGrid ItemsSource="{Binding Devices}" SelectedValuePath="Value" SelectedValue="{Binding SelectedDevice}" SelectionMode="Single" />
+        </GroupBox>
         
         <!-- Bottom log viewer and splitter -->
-        <GridSplitter Grid.ColumnSpan="2" Grid.Row="2" Height="5" Background="#FFBCBCBC" HorizontalAlignment="Stretch" />
-        <TextBox Grid.ColumnSpan="2" Grid.Row="3" IsReadOnly="True" ScrollViewer.VerticalScrollBarVisibility="Auto" TextWrapping="Wrap" Text="{Binding SelectedDevice.Log, Mode=OneWay}" />
+        <GridSplitter Grid.ColumnSpan="2" Grid.Row="1" Height="6" Background="#00BCBCBC" HorizontalAlignment="Stretch" />
+        <GroupBox Margin="3,0,3,3" Grid.ColumnSpan="2" Grid.Row="2" Template="{StaticResource VerticalGroupDisplay}">
+            <GroupBox.Header>
+                <TextBlock Margin="3" Text="Selected Device Log" Foreground="White" />
+            </GroupBox.Header>
+            
+            <TextBox IsReadOnly="True" Background="#F0F0F0" BorderThickness="0" ScrollViewer.VerticalScrollBarVisibility="Auto" 
+                     TextWrapping="Wrap" Text="{Binding SelectedDevice.Log, Mode=OneWay}" />
+        </GroupBox>
+        
+        <!-- Right Side - IP Address Configuration -->
+        <Grid Grid.Column="1" Grid.Row="0">
+            <Grid.Style>
+                <Style TargetType="Grid">
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding SelectedDevice}" Value="{x:Null}">
+                            <Setter Property="IsEnabled" Value="False" />
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </Grid.Style>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <GroupBox Margin="3" Grid.Row="0" Template="{StaticResource VerticalGroupDisplay}">
+                <GroupBox.Header>
+                    <TextBlock Margin="3" Text="Set Target Address" Foreground="White" />
+                </GroupBox.Header>
+                
+                <Grid Background="WhiteSmoke">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    
+                    <TextBlock Margin="3" Grid.Column="0" Grid.Row="0" VerticalAlignment="Center" Text="IP Address:" />
+                    <TextBox Margin="3" Grid.Column="1" Grid.Row="0" />
+
+                    <TextBlock Margin="3" Grid.Column="0" Grid.Row="1" VerticalAlignment="Center" Text="Port:" />
+                    <TextBox Margin="3" Grid.Column="1" Grid.Row="1" />
+                    
+                    <Button Margin="3" Grid.Row="2" Grid.ColumnSpan="2" Content="Commit Target" />
+                </Grid>
+            </GroupBox>
+        </Grid>
     </Grid>
 </Window>
