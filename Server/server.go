@@ -156,6 +156,8 @@ func main() {
 			continue
 		}
 
+		fmt.Println("Connection accepted. ", conn.RemoteAddr(), " | ", conn.LocalAddr())
+
 		//Start go routine to handle messages on this connection
 		go listenAndServe(conn)
 	}
