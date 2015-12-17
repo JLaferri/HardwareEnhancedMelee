@@ -25,6 +25,8 @@
                 </Border>
             </Grid>
         </ControlTemplate>
+        
+        <lview:IPAddressConverter x:Key="ipConverter" />
     </Window.Resources>
     <Window.Style>
         <Style TargetType="Window">
@@ -64,44 +66,37 @@
                 <Grid>
                     <TextBlock Margin="3" VerticalAlignment="Center" Text="Device List" Foreground="White" />
                     
-                    <Button Margin="1" HorizontalAlignment="Right" Command="{Binding ScanDevices}">
-                        <Button.Content>
-                            <Border Name="HitTestBorder" Background="#00FFFFFF" CornerRadius="2">
-                                <Image Stretch="None" Margin="2">
-                                    <Image.Style>
-                                        <Style TargetType="Image">
-                                            <Setter Property="Source" Value="/SlippiConfiguration;component/refreshicon.png" />
-                                            <Style.Triggers>
-                                                <DataTrigger Binding="{Binding ElementName=HitTestBorder, Path=IsMouseOver}" Value="True">
-                                                    <Setter Property="Source" Value="/SlippiConfiguration;component/refreshicon_hover.png" />
-                                                </DataTrigger>
-                                            </Style.Triggers>
-                                        </Style>
-                                    </Image.Style>
-                                </Image>
-                            </Border>
-                        </Button.Content>
+                    <Button Margin="1" HorizontalAlignment="Right" Command="{Binding ScanDevices}" ToolTip="Refresh">
                         <Button.Template>
                             <ControlTemplate TargetType="Button">
-                                <Border CornerRadius="2">
-                                    <Border.Style>
-                                        <Style TargetType="Border">
-                                            <Style.Triggers>
-                                                <Trigger Property="IsMouseOver" Value="True">
-                                                    <Setter Property="Background" Value="WhiteSmoke" />
-                                                </Trigger>
-                                            </Style.Triggers>
-                                        </Style>
-                                    </Border.Style>
-                                    <ContentPresenter />
+                                <Border Name="border" CornerRadius="2" Background="#00FFFFFF">
+                                    <Image Name="image" Stretch="None" Margin="2" Source="/SlippiConfiguration;component/refreshicon.png" />
                                 </Border>
+                                
+                                <ControlTemplate.Triggers>
+                                    <Trigger Property="IsMouseOver" Value="True">
+                                        <Setter TargetName="border" Property="Background" Value="WhiteSmoke" />
+                                        <Setter TargetName="image" Property="Source" Value="/SlippiConfiguration;component/refreshicon_hover.png" />
+                                    </Trigger>
+                                    <Trigger Property="IsPressed" Value="True">
+                                        <Setter TargetName="border" Property="Background" Value="LightGreen" />
+                                        <Setter TargetName="image" Property="Source" Value="/SlippiConfiguration;component/refreshicon_hover.png" />
+                                    </Trigger>
+                                </ControlTemplate.Triggers>
                             </ControlTemplate>
                         </Button.Template>
                     </Button>
                 </Grid>
             </GroupBox.Header>
 
-            <DataGrid ItemsSource="{Binding Devices}" SelectedValuePath="Value" SelectedValue="{Binding SelectedDevice}" SelectionMode="Single" />
+            <DataGrid ItemsSource="{Binding Devices}" SelectedValuePath="Value" SelectedValue="{Binding SelectedDevice}" SelectionMode="Single" AutoGenerateColumns="False">
+                <DataGrid.Columns>
+                    <DataGridTextColumn Header="Device IP" Binding="{Binding Key}" />
+                    <DataGridTextColumn Header="MAC Address" Binding="{Binding Value.Mac}" />
+                    <DataGridTextColumn Header="IP Target" Binding="{Binding Value.TargetIp}" />
+                    <DataGridTextColumn Header="Port Target" Binding="{Binding Value.TargetPort}" Width="*" />
+                </DataGrid.Columns>
+            </DataGrid>
         </GroupBox>
         
         <!-- Bottom log viewer and splitter -->
@@ -148,10 +143,12 @@
                     </Grid.RowDefinitions>
                     
                     <TextBlock Margin="3" Grid.Column="0" Grid.Row="0" VerticalAlignment="Center" Text="IP Address:" />
-                    <TextBox Margin="3" Grid.Column="1" Grid.Row="0" />
+                    <TextBox Margin="3" Grid.Column="1" Grid.Row="0" Text="{Binding SelectedDevice.PendingTargetIp, Converter={StaticResource ipConverter}, NotifyOnValidationError=True}"
+                             TextChanged="TextBox_TextChanged" />
 
                     <TextBlock Margin="3" Grid.Column="0" Grid.Row="1" VerticalAlignment="Center" Text="Port:" />
-                    <TextBox Margin="3" Grid.Column="1" Grid.Row="1" />
+                    <TextBox Margin="3" Grid.Column="1" Grid.Row="1" Text="{Binding SelectedDevice.PendingTargetPort, NotifyOnValidationError=True}"
+                             TextChanged="TextBox_TextChanged" />
                     
                     <Button Margin="3" Grid.Row="2" Grid.ColumnSpan="2" Content="Commit Target" />
                 </Grid>

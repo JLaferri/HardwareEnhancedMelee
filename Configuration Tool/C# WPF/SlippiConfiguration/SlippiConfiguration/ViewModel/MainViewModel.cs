@@ -38,6 +38,15 @@ namespace Fizzi.Applications.SlippiConfiguration.ViewModel
 
         public MainViewModel(Window window)
         {
+            Devices = new Dictionary<IPAddress, SlippiDevice>(); 
+            var d1 = new SlippiDevice("36-AF-2B-18-00-00", IPAddress.Parse("192.168.1.5"));
+            Devices.Add(IPAddress.Parse("192.168.1.5"), d1);
+            Devices.Add(IPAddress.Parse("192.168.1.7"), new SlippiDevice("36-AF-2B-18-00-01", IPAddress.Parse("192.168.1.7")));
+            d1.AppendLog("Connected to server!\r\n");
+            d1.AppendLog("Game started...\r\n");
+            d1.AppendLog("Player A: Fox\r\n");
+            d1.AppendLog("Player B: Falco\r\n");
+
             //Set up procedure for scanning for available devices
             ScanDevices = Command.CreateAsync(() => true, () =>
             {

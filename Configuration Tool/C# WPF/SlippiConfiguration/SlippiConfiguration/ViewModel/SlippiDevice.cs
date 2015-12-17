@@ -18,7 +18,19 @@ namespace Fizzi.Applications.SlippiConfiguration.ViewModel
         private const int MAX_LOG_LENGTH = 1000;
 
         public PhysicalAddress Mac { get; private set; }
-        public IPAddress Ip { get; private set; }
+        public IPAddress DeviceIp { get; private set; }
+
+        private IPAddress _targetIp;
+        public IPAddress TargetIp { get { return _targetIp; } set { this.RaiseAndSetIfChanged("TargetIp", ref _targetIp, value, PropertyChanged); } }
+
+        private int _targetPort;
+        public int TargetPort { get { return _targetPort; } set { this.RaiseAndSetIfChanged("TargetPort", ref _targetPort, value, PropertyChanged); } }
+
+        private IPAddress _pendingTargetIp;
+        public IPAddress PendingTargetIp { get { return _pendingTargetIp; } set { this.RaiseAndSetIfChanged("PendingTargetIp", ref _pendingTargetIp, value, PropertyChanged); } }
+
+        private int _pendingTargetPort;
+        public int PendingTargetPort { get { return _pendingTargetPort; } set { this.RaiseAndSetIfChanged("PendingTargetPort", ref _pendingTargetPort, value, PropertyChanged); } }
 
         private StringBuilder logBuilder = new StringBuilder(0, MAX_LOG_LENGTH);
         public string Log { get { return logBuilder.ToString(); } }
@@ -26,7 +38,7 @@ namespace Fizzi.Applications.SlippiConfiguration.ViewModel
         public SlippiDevice(string mac, IPAddress address)
         {
             Mac = PhysicalAddress.Parse(mac);
-            Ip = address;
+            DeviceIp = address;
         }
 
         public void HandleUdpMessage(byte[] message)

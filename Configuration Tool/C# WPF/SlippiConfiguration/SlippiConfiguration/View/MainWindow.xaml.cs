@@ -23,5 +23,10 @@ namespace Fizzi.Applications.SlippiConfiguration.View
         {
             InitializeComponent();
         }
+
+        private void TextBox_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            (sender as TextBox).GetBindingExpression(TextBox.TextProperty).ValidateWithoutUpdate();
+        }
     }
 }

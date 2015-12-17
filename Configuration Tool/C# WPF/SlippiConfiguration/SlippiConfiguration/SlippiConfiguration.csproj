@@ -124,6 +124,7 @@
     <Compile Include="Common\Notifiable.cs" />
     <Compile Include="Common\NotifyPropertyChangedEx.cs" />
     <Compile Include="Model\MessageTypes.cs" />
+    <Compile Include="View\IPAddressConverter.cs" />
     <Compile Include="ViewModel\MainViewModel.cs" />
     <Compile Include="ViewModel\SlippiDevice.cs" />
     <Compile Include="View\MainWindow.xaml.cs">
