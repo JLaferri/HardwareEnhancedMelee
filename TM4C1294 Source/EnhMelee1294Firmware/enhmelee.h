@@ -182,7 +182,7 @@ bool checkIfOffStage(uint16_t stage, float x, float y) {
 }
 
 //Return joystick region
-uint8_t getJoystickRegion(uint32_t x, uint32_t y) {
+uint8_t getJoystickRegion(float x, float y) {
   if(x >= 0.2875 && y >= 0.2875) return JOYSTICK_NE;
   else if(x >= 0.2875 && y <= -0.2875) return JOYSTICK_SE; 
   else if(x <= -0.2875 && y <= -0.2875) return JOYSTICK_SW;

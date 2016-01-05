@@ -23,6 +23,8 @@ namespace Fizzi.Applications.SlippiConfiguration.ViewModel
 
         private static Logger logger = LogManager.GetCurrentClassLogger();
 
+        public ServerViewModel ServerViewModel { get; private set; }
+
         private bool _isBusy;
         public bool IsBusy { get { return _isBusy; } set { this.RaiseAndSetIfChanged("IsBusy", ref _isBusy, value, PropertyChanged); } }
 
@@ -46,6 +48,7 @@ namespace Fizzi.Applications.SlippiConfiguration.ViewModel
             //d1.AppendLog("Game started...\r\n");
             //d1.AppendLog("Player A: Fox\r\n");
             //d1.AppendLog("Player B: Falco\r\n");
+            ServerViewModel = new ViewModel.ServerViewModel();
 
             //Set up procedure for scanning for available devices
             ScanDevices = Command.CreateAsync(() => true, () =>
@@ -55,7 +58,7 @@ namespace Fizzi.Applications.SlippiConfiguration.ViewModel
 
                 UdpClient client = new UdpClient();
                 IPEndPoint ip = new IPEndPoint(IPAddress.Broadcast, 3637);
-                byte[] bytes = Encoding.ASCII.GetBytes(string.Format("{{\"type\":{0}}}", (int)MessageType.Discovery));
+                byte[] bytes = Encoding.ASCII.GetBytes(string.Format("{{\"type\":{0}}}", (int)UdpMessageType.Discovery));
                 client.Send(bytes, bytes.Length, ip);
                 
                 //Log current time
@@ -78,8 +81,8 @@ namespace Fizzi.Applications.SlippiConfiguration.ViewModel
 
                         //Parse JSON
                         var json = JObject.Parse(Encoding.ASCII.GetString(response));
-                        var command = (MessageType)json["type"].Value<int>();
-                        if (command != MessageType.Discovery) continue;
+                        var command = (UdpMessageType)json["type"].Value<int>();
+                        if (command != UdpMessageType.Discovery) continue;
 
                         //Add device
                         var macString = json["mac"].Value<string>();

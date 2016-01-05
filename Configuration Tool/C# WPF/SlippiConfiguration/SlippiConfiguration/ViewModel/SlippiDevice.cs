@@ -53,9 +53,9 @@ namespace Fizzi.Applications.SlippiConfiguration.ViewModel
             var json = JObject.Parse(Encoding.ASCII.GetString(message));
             int command = json["type"].Value<int>();
 
-            switch((MessageType)command)
+            switch((UdpMessageType)command)
             {
-                case MessageType.LogMessage:
+                case UdpMessageType.LogMessage:
                     //Get string and append to log
                     var logMessage = json["message"].Value<string>();
                     AppendLog(logMessage);
@@ -84,7 +84,7 @@ namespace Fizzi.Applications.SlippiConfiguration.ViewModel
         {
             UdpClient client = new UdpClient();
             IPEndPoint ip = new IPEndPoint(DeviceIp, 3637);
-            byte[] bytes = Encoding.ASCII.GetBytes(string.Format("{{\"type\":{0}}}", (int)MessageType.FlashErase));
+            byte[] bytes = Encoding.ASCII.GetBytes(string.Format("{{\"type\":{0}}}", (int)UdpMessageType.FlashErase));
             client.Send(bytes, bytes.Length, ip);
         }
 

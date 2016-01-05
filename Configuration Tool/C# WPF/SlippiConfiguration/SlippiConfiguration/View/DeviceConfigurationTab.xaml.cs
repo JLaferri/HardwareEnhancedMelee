@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
@@ -15,13 +16,18 @@ using System.Windows.Shapes;
 namespace Fizzi.Applications.SlippiConfiguration.View
 {
     /// <summary>
-    /// Interaction logic for MainWindow.xaml
+    /// Interaction logic for DeviceConfigurationTab.xaml
     /// </summary>
-    public partial class MainWindow : Window
+    public partial class DeviceConfigurationTab : UserControl
     {
-        public MainWindow()
+        public DeviceConfigurationTab()
         {
             InitializeComponent();
+        }
+
+        private void TextBox_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            (sender as TextBox).GetBindingExpression(TextBox.TextProperty).ValidateWithoutUpdate();
         }
     }
 }

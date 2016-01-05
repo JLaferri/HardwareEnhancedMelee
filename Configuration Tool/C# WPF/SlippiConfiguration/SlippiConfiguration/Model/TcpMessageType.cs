@@ -6,12 +6,10 @@ using System.Threading.Tasks;
 
 namespace Fizzi.Applications.SlippiConfiguration.Model
 {
-    enum UdpMessageType
+    enum TcpMessageType
     {
-        Invalid,
-        Discovery,
-        FlashErase,
-        LogMessage,
-        SetTarget
+        GameStart = 0x37,
+        GameUpdate = 0x38,
+        GameEnd = 0x39,
     }
 }

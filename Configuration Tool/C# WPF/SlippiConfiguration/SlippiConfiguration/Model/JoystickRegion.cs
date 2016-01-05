@@ -6,12 +6,16 @@ using System.Threading.Tasks;
 
 namespace Fizzi.Applications.SlippiConfiguration.Model
 {
-    enum UdpMessageType
+    enum JoystickRegion
     {
-        Invalid,
-        Discovery,
-        FlashErase,
-        LogMessage,
-        SetTarget
+        NE,
+        SE,
+        SW,
+        NW,
+        N,
+        E,
+        S,
+        W,
+        DeadZone
     }
 }
