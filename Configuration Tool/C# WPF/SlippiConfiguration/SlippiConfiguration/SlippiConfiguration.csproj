@@ -110,6 +110,26 @@
       <Generator>MSBuild:Compile</Generator>
       <SubType>Designer</SubType>
     </ApplicationDefinition>
+    <Compile Include="Common\NetworkStreamEx.cs" />
+    <Compile Include="Common\ObjectEx.cs" />
+    <Compile Include="Model\BitHelper.cs" />
+    <Compile Include="Model\Constants.cs" />
+    <Compile Include="Model\Game.cs" />
+    <Compile Include="Model\Player.cs" />
+    <Compile Include="Model\PlayerFlags.cs" />
+    <Compile Include="Model\PlayerFrameData.cs" />
+    <Compile Include="Model\PlayerStatistics.cs" />
+    <Compile Include="Model\StockStatistics.cs" />
+    <Compile Include="ViewModel\GameInformation.cs" />
+    <Compile Include="ViewModel\ServerViewModel.cs" />
+    <Compile Include="ViewModel\SlippiConnection.cs" />
+    <Compile Include="View\ServerDisplayTab.xaml.cs">
+      <DependentUpon>ServerDisplayTab.xaml</DependentUpon>
+    </Compile>
+    <Page Include="View\DeviceConfigurationTab.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
     <Page Include="View\MainWindow.xaml">
       <Generator>MSBuild:Compile</Generator>
       <SubType>Designer</SubType>
@@ -123,7 +143,11 @@
     <Compile Include="Common\ExceptionEx.cs" />
     <Compile Include="Common\Notifiable.cs" />
     <Compile Include="Common\NotifyPropertyChangedEx.cs" />
-    <Compile Include="Model\MessageTypes.cs" />
+    <Compile Include="Model\TcpMessageType.cs" />
+    <Compile Include="Model\UdpMessageTypes.cs" />
+    <Compile Include="View\DeviceConfigurationTab.xaml.cs">
+      <DependentUpon>DeviceConfigurationTab.xaml</DependentUpon>
+    </Compile>
     <Compile Include="View\IPAddressConverter.cs" />
     <Compile Include="ViewModel\MainViewModel.cs" />
     <Compile Include="ViewModel\SlippiDevice.cs" />
@@ -131,6 +155,10 @@
       <DependentUpon>MainWindow.xaml</DependentUpon>
       <SubType>Code</SubType>
     </Compile>
+    <Page Include="View\ServerDisplayTab.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Properties\AssemblyInfo.cs">

@@ -55,7 +55,7 @@ namespace Fizzi.Applications.SlippiConfiguration.ViewModel
 
                 UdpClient client = new UdpClient();
                 IPEndPoint ip = new IPEndPoint(IPAddress.Broadcast, 3637);
-                byte[] bytes = Encoding.ASCII.GetBytes(string.Format("{{\"type\":{0}}}", (int)MessageType.Discovery));
+                byte[] bytes = Encoding.ASCII.GetBytes(string.Format("{{\"type\":{0}}}", (int)UdpMessageType.Discovery));
                 client.Send(bytes, bytes.Length, ip);
                 
                 //Log current time
@@ -78,8 +78,8 @@ namespace Fizzi.Applications.SlippiConfiguration.ViewModel
 
                         //Parse JSON
                         var json = JObject.Parse(Encoding.ASCII.GetString(response));
-                        var command = json["type"].Value<MessageType>();
-                        if (command != MessageType.Discovery) continue;
+                        var command = json["type"].Value<UdpMessageType>();
+                        if (command != UdpMessageType.Discovery) continue;
 
                         //Add device
                         var macString = json["mac"].Value<string>();

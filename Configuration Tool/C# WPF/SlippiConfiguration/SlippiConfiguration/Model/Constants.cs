@@ -6,12 +6,8 @@ using System.Threading.Tasks;
 
 namespace Fizzi.Applications.SlippiConfiguration.Model
 {
-    enum MessageType
+    static class Constants
     {
-        Invalid,
-        Discovery,
-        FlashErase,
-        LogMessage,
-        SetTarget
+        public const int PLAYER_COUNT = 2;
     }
 }

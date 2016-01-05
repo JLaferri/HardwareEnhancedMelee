@@ -47,9 +47,9 @@ namespace Fizzi.Applications.SlippiConfiguration.ViewModel
             var json = JObject.Parse(Encoding.ASCII.GetString(message));
             int command = json["type"].Value<int>();
 
-            switch((MessageType)command)
+            switch((UdpMessageType)command)
             {
-                case MessageType.LogMessage:
+                case UdpMessageType.LogMessage:
                     //Get string and append to log
                     var logMessage = json["message"].Value<string>();
                     AppendLog(logMessage);
