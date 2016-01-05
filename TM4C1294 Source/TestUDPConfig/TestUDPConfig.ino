@@ -3,6 +3,8 @@
 #include <EthernetUdp.h>
 #include <ArduinoJson.h>
 
+#include "Flash.h"
+
 #define UDP_MAX_PACKET_SIZE 100
 #define RECONNECT_TIME_MS 15000
 
@@ -13,8 +15,9 @@
 
 #define EEPROM_SCHEMA 0x1
 
-//TODO: Read MAC address from USERREG0 and USERREG1
+//MAC address. This address will be overwritten by MAC configured in USERREG0 and USERREG1 during ethernet initialization
 byte mac[] = { 0x00, 0x1A, 0xB6, 0x02, 0xF5, 0x8C };
+//byte mac[] = { 0x00, 0x1A, 0xB6, 0x02, 0xFA, 0xF8 };
 
 IPAddress serverIp(192, 168, 0, 3);
 int serverPort = 3636;
@@ -57,7 +60,6 @@ void ethernetInitialize() {
   debugPrintln("Checking EEPROM Schema");
   
   int i = 0;
-  
   byte schemaRead = EEPROM.read(i++);
   
   //Ensure that EEPROM has been written to with the proper schema before reading
@@ -78,6 +80,10 @@ void ethernetInitialize() {
     sendUdpDebugMessages = flags & 0x1;
     sendSerialDebugMessages = flags & 0x2;
   }
+  
+  debugPrintln("Getting MAC Address from registers.");
+  loadMacAddress(mac);
+  debugPrintln("Read MAC from registers: " + macToString());
   
   debugPrintln("Attempting to obtain IP address from DHCP");
   
@@ -138,7 +144,7 @@ void listenForUdpPacket() {
     debugPrintln("UDP packet contains command: " + String(command));
     
     //Prepare to write response
-    StaticJsonBuffer<1000> jsonWriteBuffer;
+    StaticJsonBuffer<2048> jsonWriteBuffer;
     JsonObject& resp = jsonWriteBuffer.createObject();
     
     //TODO: Test what happens when a UDP message is sent that doesn't contain a type node
@@ -146,32 +152,46 @@ void listenForUdpPacket() {
     //Handle command received
     switch(command) {
       case MSG_TYPE_DISCOVERY:
+        debugPrintln("Responding to discovery request. " + macToString());
         //Add command and mac elements to JSON
         resp["type"] = MSG_TYPE_DISCOVERY;
         resp["mac"] = macToString();
-        resp["targetIp"] = ipToString(serverIp);
-        resp["targetPort"] = serverPort;
-        resp["debugSerial"] = sendSerialDebugMessages;
-        resp["debugUdp"] = sendUdpDebugMessages;
+//        resp["targetIp"] = ipToString(serverIp);
+//        resp["targetPort"] = serverPort;
+//        resp["debugSerial"] = sendSerialDebugMessages;
+//        resp["debugUdp"] = sendUdpDebugMessages;
 
+        debugPrintln("Writing UDP message...");
         //Send udp packet back
         udp.beginPacket(lastBroadcastIp, lastBroadcastPort);
-        char buffer[1024];
+        char buffer[2048];
         resp.printTo(buffer, sizeof(buffer));
         udp.write(buffer);
         udp.endPacket();
         
+        debugPrintln("Discovery message written.");
+        
         break;
       case MSG_TYPE_SET_TARGET:
-        String targetIpString = root["targetIp"];
-        int targetPort = root["targetPort"];
-        sendSerialDebugMessages = root["debugSerial"];
-        sendUdpDebugMessages = root["debugUdp"];
+//        String targetIpString = root["targetIp"];
+//        int targetPort = root["targetPort"];
+//        sendSerialDebugMessages = root["debugSerial"];
+//        sendUdpDebugMessages = root["debugUdp"];
+//        
+//        //If IP or port as changed, disconnect client
+//        if (!ipPortToString(serverIp, serverPort).equals(targetIpString + String(":") + String(targetPort))) {
+//          debugPrintln("Disconnecting from old client.");
+//          client.stop();
+//        }
         
-        //If IP or port as changed, disconnect client
-        if (!ipPortToString(serverIp, serverPort).equals(targetIpString + String(":") + String(targetPort))) {
-          client.disconnect();
-        }
+        //TODO: Write new settings to EEPROM
+        
+        break;
+      case MSG_TYPE_FLASH_ERASE:
+        debugPrintln("Erasing flash.");
+        delay(200);
+        eraseFlash();
+        debugPrintln("Flash should be erased and program should be restarted. This message should not show up.");
     }     
   }
 }

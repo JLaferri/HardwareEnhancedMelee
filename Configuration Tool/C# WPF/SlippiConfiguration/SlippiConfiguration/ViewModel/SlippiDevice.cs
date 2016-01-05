@@ -10,6 +10,8 @@ using System.Threading.Tasks;
 using Fizzi.Applications.SlippiConfiguration.Common;
 using Newtonsoft.Json.Linq;
 using Fizzi.Applications.SlippiConfiguration.Model;
+using System.Windows.Input;
+using System.Net.Sockets;
 
 namespace Fizzi.Applications.SlippiConfiguration.ViewModel
 {
@@ -35,10 +37,14 @@ namespace Fizzi.Applications.SlippiConfiguration.ViewModel
         private StringBuilder logBuilder = new StringBuilder(0, MAX_LOG_LENGTH);
         public string Log { get { return logBuilder.ToString(); } }
 
+        public ICommand EraseFlashCommand { get; private set; }
+
         public SlippiDevice(string mac, IPAddress address)
         {
             Mac = PhysicalAddress.Parse(mac);
             DeviceIp = address;
+
+            EraseFlashCommand = Command.Create(() => true, EraseFlash);
         }
 
         public void HandleUdpMessage(byte[] message)
@@ -76,7 +82,10 @@ namespace Fizzi.Applications.SlippiConfiguration.ViewModel
 
         public void EraseFlash()
         {
-
+            UdpClient client = new UdpClient();
+            IPEndPoint ip = new IPEndPoint(DeviceIp, 3637);
+            byte[] bytes = Encoding.ASCII.GetBytes(string.Format("{{\"type\":{0}}}", (int)MessageType.FlashErase));
+            client.Send(bytes, bytes.Length, ip);
         }
 
         public void ChangeTarget(IPAddress address, int port)

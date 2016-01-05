@@ -123,6 +123,7 @@
             </Grid.Style>
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
 
             <GroupBox Margin="3" Grid.Row="0" Template="{StaticResource VerticalGroupDisplay}">
@@ -151,6 +152,18 @@
                              TextChanged="TextBox_TextChanged" />
                     
                     <Button Margin="3" Grid.Row="2" Grid.ColumnSpan="2" Content="Commit Target" />
+                </Grid>
+            </GroupBox>
+
+            <GroupBox Margin="3" Grid.Row="1" Template="{StaticResource VerticalGroupDisplay}">
+                <GroupBox.Header>
+                    <TextBlock Margin="3" Text="Super User Tools" Foreground="White" />
+                </GroupBox.Header>
+
+                <Grid Background="WhiteSmoke">
+                    <StackPanel>
+                        <Button Margin="3" Content="Erase Flash" Command="{Binding SelectedDevice.EraseFlashCommand}" />
+                    </StackPanel>
                 </Grid>
             </GroupBox>
         </Grid>
