@@ -41,7 +41,7 @@
                 </Grid>
             </GroupBox.Header>
 
-            <DataGrid ItemsSource="{Binding Connections}" SelectedItem="{Binding SelectedConnection}" SelectionMode="Single" AutoGenerateColumns="False">
+            <DataGrid ItemsSource="{Binding Connections}" SelectedItem="{Binding SelectedConnection}" SelectionMode="Single" IsReadOnly="True" AutoGenerateColumns="False">
                 <DataGrid.Columns>
                     <DataGridTextColumn Header="Device IP" Binding="{Binding DeviceIp}" Width="*" />
                 </DataGrid.Columns>

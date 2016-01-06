@@ -9,6 +9,7 @@ using System.Reactive.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using Fizzi.Applications.SlippiConfiguration.Common;
+using System.Windows.Threading;
 
 namespace Fizzi.Applications.SlippiConfiguration.ViewModel
 {
@@ -24,6 +25,7 @@ namespace Fizzi.Applications.SlippiConfiguration.ViewModel
         public ServerViewModel()
         {
             Connections = new ObservableCollection<SlippiConnection>();
+            Connections.Add(new SlippiConnection("192.168.1.1"));
         }
 
         public void StartServer()
@@ -38,20 +40,23 @@ namespace Fizzi.Applications.SlippiConfiguration.ViewModel
                 listener = TcpListener.Create(Settings.Default.ServerPort);
                 listener.Start();
 
+                var context = System.Threading.Thread.CurrentContext;
+
                 //Listen for Tcp connections until server is disabled
-                Observable.Start(() =>
+                Observable.Start(async () =>
                 {
                     while(Settings.Default.ServerEnabled)
                     {
                         //Accept a client connection - blocking call
                         var client = listener.AcceptTcpClient();
-                        
+                        var stream = client.GetStream();
+
                         //Create a slippi connection object
-                        var connection = new SlippiConnection(client);
+                        var connection = new SlippiConnection(client, stream);
 
                         //Add slippi connection to collection, prep it to be removed if an error is encountered
-                        Connections.Add(connection);
-                        connection.TerminateAction = () => Connections.Remove(connection);
+                        await Dispatcher.CurrentDispatcher.InvokeAsync(() => Connections.Add(connection));
+                        connection.TerminateAction = async () => await Dispatcher.CurrentDispatcher.InvokeAsync(() => Connections.Remove(connection));
                     }
                 }, System.Reactive.Concurrency.TaskPoolScheduler.Default);
             }

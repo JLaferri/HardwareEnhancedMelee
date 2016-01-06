@@ -114,7 +114,9 @@
     <Compile Include="Common\ObjectEx.cs" />
     <Compile Include="Model\BitHelper.cs" />
     <Compile Include="Model\Constants.cs" />
+    <Compile Include="Model\ControllerHelpers.cs" />
     <Compile Include="Model\Game.cs" />
+    <Compile Include="Model\JoystickRegion.cs" />
     <Compile Include="Model\Player.cs" />
     <Compile Include="Model\PlayerFlags.cs" />
     <Compile Include="Model\PlayerFrameData.cs" />

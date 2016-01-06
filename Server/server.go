@@ -33,13 +33,12 @@ func listenAndServe(conn net.Conn) {
 	}()
 
 	for {
-		message, err := bufio.NewReader(conn).ReadString('\n')
+		b, err := bufio.NewReader(conn).ReadByte()
 		if err != nil {
 			fmt.Println("Error detected reading from connection.")
 			break
 		}
-		s := string(message)
-		fmt.Print(s)
+		fmt.Printf("[%x]", b)
 
 		//		//Append log file
 		//		err = os.Chdir(localRoot)
@@ -124,7 +123,7 @@ func listenAndServe(conn net.Conn) {
 		//			}
 		//		}
 
-		conn.Write([]byte("\n"))
+		//conn.Write([]byte("\n"))
 	}
 }
 

@@ -49,6 +49,7 @@ namespace Fizzi.Applications.SlippiConfiguration.ViewModel
             //d1.AppendLog("Player A: Fox\r\n");
             //d1.AppendLog("Player B: Falco\r\n");
             ServerViewModel = new ViewModel.ServerViewModel();
+            ServerViewModel.StartServer();
 
             //Set up procedure for scanning for available devices
             ScanDevices = Command.CreateAsync(() => true, () =>

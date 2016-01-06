@@ -23,16 +23,18 @@ namespace Fizzi.Applications.SlippiConfiguration.ViewModel
         public PhysicalAddress Mac { get; private set; }
         public IPAddress DeviceIp { get; private set; }
 
-        public SlippiConnection(TcpClient client)
+        public SlippiConnection(string ip)
+        {
+            DeviceIp = IPAddress.Parse(ip);
+        }
+
+        public SlippiConnection(TcpClient client, NetworkStream stream)
         {
             //Populated MAC and IP
             DeviceIp = ((IPEndPoint)client.Client.RemoteEndPoint).Address;
 
             //Make new game info
             GameInfo = new GameInformation();
-
-            //Get stream
-            var stream = client.GetStream();
 
             //Handle receiving messages
             Observable.Start(async () =>

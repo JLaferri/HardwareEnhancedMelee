@@ -1,5 +1,6 @@
 #include <SPI.h>
 #include <Ethernet.h>
+#include <EEPROM.h>
 #include <EthernetUdp.h>
 #include <ArduinoJson.h>
 
@@ -25,7 +26,7 @@ void asmEventsInitialize() {
 //**********************************************************************
 //*               SPI Slave Communication Functions
 //**********************************************************************
-RfifoMessage Msg; //Keep an RfifoMessage variable as a global variable to prevent memory leak
+RfifoMessage Msg; //Keep an RfifoMessage variable as a global variable to prevent memory leak?
 
 void spiSlaveInitialize() {
   SSI3DMASlave.begin();
@@ -35,7 +36,7 @@ void spiReadMessage() {
   Msg = { false, 0, 0, 0, 0 };
   
   //Wait until a message is available
-  while (!SSI3DMASlave.isMessageAvailable()) ethernetCheckConnection();
+  if(!SSI3DMASlave.isMessageAvailable()) return;
   
   uint32_t messageSize = SSI3DMASlave.getMessageSize();
   uint8_t* bytes = SSI3DMASlave.popMessage();
@@ -81,6 +82,8 @@ float readFloat(uint8_t* a, int& idx) {
 }
 
 void handleGameStart() {
+  writeMsg();
+  
   uint8_t* data = Msg.data;
   int idx = 0;
   
@@ -102,6 +105,8 @@ void handleGameStart() {
 }
 
 void handleUpdate() {
+  writeMsg();
+  
   uint8_t* data = Msg.data;
   int idx = 0;
   
@@ -152,6 +157,8 @@ void handleUpdate() {
 }
 
 void handleGameEnd() {
+  writeMsg();
+  
   uint8_t* data = Msg.data;
   int idx = 0;
   
@@ -161,127 +168,204 @@ void handleGameEnd() {
 //**********************************************************************
 //*                        Ethernet
 //**********************************************************************
-#define DELAY_TIME 10000
 #define UDP_MAX_PACKET_SIZE 100
+#define RECONNECT_TIME_MS 15000
 
-// the media access control (ethernet hardware) address for the shield:
+#define MSG_TYPE_DISCOVERY 1
+#define MSG_TYPE_FLASH_ERASE 2
+#define MSG_TYPE_LOG_MESSAGE 3
+#define MSG_TYPE_SET_TARGET 4
+
+#define EEPROM_SCHEMA 0x1
+
+//MAC address. This address will be overwritten by MAC configured in USERREG0 and USERREG1 during ethernet initialization
 byte mac[] = { 0x00, 0x1A, 0xB6, 0x02, 0xF5, 0x8C };
-IPAddress server(192, 168, 0, 3);
-int port = 3636;
-IPAddress debugServer(192, 168, 0, 3);
-int udpPort = 3637;
+//byte mac[] = { 0x00, 0x1A, 0xB6, 0x02, 0xFA, 0xF8 };
 
-char udpPacketBuffer[UDP_MAX_PACKET_SIZE];
-long lastReconnectMs = 0;
-
+IPAddress serverIp(10, 0, 0, 13);
+int serverPort = 3636;
+long timeOfLastFailedConnection = 0;
 EthernetClient client;
+
+int udpPort = 3637;
+IPAddress lastBroadcastIp(192, 168, 0, 4);
+int lastBroadcastPort = 0;
 EthernetUDP udp;
 
+bool ethernetInitialized = false;
+
+bool sendUdpDebugMessages = true;
+bool sendSerialDebugMessages = true;
+
+String ipPortToString(IPAddress ip, int port) {
+  char ipAddressString[30];
+  sprintf(ipAddressString, "%d.%d.%d.%d:%d", ip[0], ip[1], ip[2], ip[3], port);
+  return String(ipAddressString);
+}
+
+String ipToString(IPAddress ip) {
+  char ipAddressString[20];
+  sprintf(ipAddressString, "%d.%d.%d.%d", ip[0], ip[1], ip[2], ip[3]);
+  return String(ipAddressString);
+}
+
+IPAddress stringToIp(String ipString) {
+  
+}
+
+String macToString() {
+  char macString[20];
+  sprintf(macString, "%02X-%02X-%02X-%02X-%02X-%02X", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+  return String(macString);
+}
+
 void ethernetInitialize() {
-  if (lastReconnectMs == 0 || millis() - lastReconnectMs > DELAY_TIME) {
-    debugPrintln("Attempting to obtain IP address from DHCP");
+  debugPrintln("Checking EEPROM Schema");
+  
+  int i = 0;
+  byte schemaRead = EEPROM.read(i++);
+  
+  //Ensure that EEPROM has been written to with the proper schema before reading
+  if (schemaRead == EEPROM_SCHEMA) {
+    debugPrintln("Loading settings from EEPROM");
     
-    // start the Ethernet connection:
-    if (Ethernet.begin(mac) == 0) {
-      debugPrintln("Failed to configure Ethernet using DHCP");
-      return;
-    }
+    //Load target IP address
+    serverIp[0] = EEPROM.read(i++);
+    serverIp[1] = EEPROM.read(i++);
+    serverIp[2] = EEPROM.read(i++);
+    serverIp[3] = EEPROM.read(i++);
+    
+    //Load port
+    serverPort = EEPROM.read(i++) << 8 | EEPROM.read(i++);
+    
+    //Load debug flags
+    byte flags = EEPROM.read(i++);
+    sendUdpDebugMessages = flags & 0x1;
+    sendSerialDebugMessages = flags & 0x2;
+  }
   
-    debugPrint("Obtained IP address: "); debugPrintln(String(Ethernet.localIP()));
+  debugPrintln("Getting MAC Address from registers.");
+  loadMacAddress(mac);
+  debugPrintln("Read MAC from registers: " + macToString());
   
-    udpConnect();
-    ethernetConnect();
+  debugPrintln("Attempting to obtain IP address from DHCP");
   
-    lastReconnectMs = millis();
+  // start the Ethernet connection:
+  if (Ethernet.begin(mac)) {
+    debugPrintln("Obtained IP address: " + ipToString(Ethernet.localIP()));
+  } else {
+    debugPrintln("Failed to configure Ethernet using DHCP");
+  }
+  
+  if (udp.begin(udpPort)) {
+    debugPrintln("Initialized UDP");
+  } else {
+    debugPrintln("Failed to initialize UDP");
+  }
+  
+  ethernetInitialized = true;
+}
+
+void maintainClientConnection() {
+  //If client is connected, nothing to do
+  if (client.connected()) return;
+  
+  //If connection attempt was recently failed, don't attempt to connect
+  if (timeOfLastFailedConnection != 0 && millis() - timeOfLastFailedConnection < RECONNECT_TIME_MS) return;
+  
+  //Attempt to connect to server
+  debugPrintln("Attempting to connect to server at " + ipPortToString(serverIp, serverPort) + "...");
+  
+  if (client.connect(serverIp, serverPort)) {
+    debugPrintln("Connection to server successful.");
+  } else {
+    timeOfLastFailedConnection = millis();
+    debugPrintln("Connection to server failed."); 
   }
 }
 
-void udpConnect() {
-    int code = udp.begin(udpPort);
-    if (code) {
-      debugPrintln("UDP successfully started!");
-      postConnectedMessage();
-    } else {
-      debugPrint("Failed to start UDP. Code: "); debugPrintln(String(code));
-    }
-}
-
-void ethernetConnect() {
-  if (lastReconnectMs == 0 || millis() - lastReconnectMs > DELAY_TIME) {
-    debugPrint("Trying to connect to: "); debugPrintln(String(server));
-    int code = client.connect(server, port);
-    if (code) {
-      debugPrintln("Connected to server!");
-      postConnectedMessage();
-    } else {
-      debugPrint("Failed to connect to server. Code: "); debugPrintln(String(code));
-    }
-    
-    lastReconnectMs = millis();
-  }
-}
-
-int ethernetCheckConnection() {
-  //Check if UDP packet has been received
+void listenForUdpPacket() {
   int packetSize = udp.parsePacket();
   if (packetSize) {
-    handleReceiveUdp(packetSize);
-  }
+    if (packetSize > UDP_MAX_PACKET_SIZE) return;
   
-  //Checks if connection is working. If it isn't, attempt to reconnect.
-  if(!client) {
-    client.stop();
-    ethernetInitialize();
-    return -1;
-  }
+    //Get IP and port of the UDP sender
+    lastBroadcastIp = udp.remoteIP();
+    lastBroadcastPort = udp.remotePort();
+    debugPrintln("Received UDP packet from: " + ipPortToString(lastBroadcastIp, lastBroadcastPort));
+    
+    //Read UDP packet into buffer
+    char udpPacketBuffer[UDP_MAX_PACKET_SIZE];
+    udp.read(udpPacketBuffer, UDP_MAX_PACKET_SIZE);
+    
+    //Create JSON root from buffer
+    StaticJsonBuffer<UDP_MAX_PACKET_SIZE> jsonReadBuffer;
+    JsonObject& root = jsonReadBuffer.parseObject(udpPacketBuffer);
+    
+    //Parse json for command
+    int command = root["type"];
+    debugPrintln("UDP packet contains command: " + String(command));
+    
+    //Prepare to write response
+    StaticJsonBuffer<2048> jsonWriteBuffer;
+    JsonObject& resp = jsonWriteBuffer.createObject();
+    
+    //TODO: Test what happens when a UDP message is sent that doesn't contain a type node
+    
+    //Handle command received
+    switch(command) {
+      case MSG_TYPE_DISCOVERY:
+        debugPrintln("Responding to discovery request. " + macToString());
+        //Add command and mac elements to JSON
+        resp["type"] = MSG_TYPE_DISCOVERY;
+        resp["mac"] = macToString();
+//        resp["targetIp"] = ipToString(serverIp);
+//        resp["targetPort"] = serverPort;
+//        resp["debugSerial"] = sendSerialDebugMessages;
+//        resp["debugUdp"] = sendUdpDebugMessages;
 
-  //Check if we are connected to a server. If not, attempt to reconnect.
-  if (!client.connected()) {
-    client.stop();
-    Ethernet.maintain();
-    ethernetConnect();
-    return -2;
+        debugPrintln("Writing UDP message...");
+        //Send udp packet back
+        udp.beginPacket(lastBroadcastIp, lastBroadcastPort);
+        char buffer[2048];
+        resp.printTo(buffer, sizeof(buffer));
+        udp.write(buffer);
+        udp.endPacket();
+        
+        debugPrintln("Discovery message written.");
+        
+        break;
+      case MSG_TYPE_SET_TARGET:
+//        String targetIpString = root["targetIp"];
+//        int targetPort = root["targetPort"];
+//        sendSerialDebugMessages = root["debugSerial"];
+//        sendUdpDebugMessages = root["debugUdp"];
+//        
+//        //If IP or port as changed, disconnect client
+//        if (!ipPortToString(serverIp, serverPort).equals(targetIpString + String(":") + String(targetPort))) {
+//          debugPrintln("Disconnecting from old client.");
+//          client.stop();
+//        }
+        
+        //TODO: Write new settings to EEPROM
+        
+        break;
+      case MSG_TYPE_FLASH_ERASE:
+        debugPrintln("Erasing flash.");
+        delay(200);
+        eraseFlash();
+        debugPrintln("Flash should be erased and program should be restarted. This message should not show up.");
+    }     
   }
+}
+
+//This is the function that should be called every loop of the application
+int ethernetExecute() {
+  listenForUdpPacket();
+  maintainClientConnection();
   
   Ethernet.maintain();
   return 1;
-}
-
-void handleReceiveUdp(int size) {
-  if (size > UDP_MAX_PACKET_SIZE) return;
-  
-  //Get IP and port of the UDP sender
-  IPAddress sourceIp = udp.remoteIP();
-  int sourcePort = udp.remotePort();
-  
-  //Read json from udp packet
-  udp.read(udpPacketBuffer, UDP_MAX_PACKET_SIZE);
-  
-  StaticJsonBuffer<UDP_MAX_PACKET_SIZE> jsonBuffer;
-  JsonObject& root = jsonBuffer.parseObject(udpPacketBuffer);
-  
-  //Parse json for command
-  int command = root["command"];
-  debugPrintln("Received UDP packet with command: " + String(command));
-  
-  //Handle command received
-  switch(command) {
-    case 1:
-      StaticJsonBuffer<200> jsonBuffer;
-  
-      JsonObject& resp = jsonBuffer.createObject();
-      JsonArray& macBytes = resp.createNestedArray("mac");
-      for (int i = 0; i < sizeof(mac); i++) macBytes.add(mac[i]);
-    
-      resp["ip"] = String(Ethernet.localIP());
-      resp["port"] = String(udpPort);
-      
-      udp.beginPacket(sourceIp, sourcePort);
-      resp.printTo(udp);
-      udp.endPacket();
-      
-      break;
-  }     
 }
 
 //**********************************************************************
@@ -402,6 +486,24 @@ void postGameEndMessage() {
     root.printTo(client);
     client.println();
   }
+}
+
+void writeMsg() {
+  if (client.connected()) {
+    int realMsgSize = Msg.messageSize + 1;
+    
+    //Write message length
+    client.write(realMsgSize >> 24 & 0xFF);
+    client.write(realMsgSize >> 16 & 0xFF);
+    client.write(realMsgSize >> 8 & 0xFF);
+    client.write(realMsgSize & 0xFF);
+    
+    //Write message code
+    client.write(Msg.eventCode);
+    
+    //Write message
+    client.write(Msg.data, Msg.messageSize);
+  }  
 }
 
 //**********************************************************************
@@ -621,6 +723,8 @@ void checkFlashErase() {
 }
 
 void setup() {
+  Serial.begin(115200);
+  
   debugPrintln("Starting initialization.");
   
   ethernetInitialize();
@@ -673,11 +777,28 @@ void debugPrintln(String s) {
 }
 
 void debugPrint(String s) {
-   udp.beginPacket(debugServer, udpPort);
-   char buffer[s.length() + 1];
-   s.toCharArray(buffer, sizeof(buffer));
-   udp.write(buffer);
-   udp.endPacket();
+  if (sendSerialDebugMessages) {
+    //Print serial message
+    Serial.print(s);
+  }
+  
+  if (sendUdpDebugMessages && ethernetInitialized) {
+    //Prepare to write response
+    int jsonBufSize = s.length() + 50;
+    StaticJsonBuffer<512> jsonWriteBuffer;
+    JsonObject& json = jsonWriteBuffer.createObject();
+  
+    //Populate response JSON
+    json["type"] = MSG_TYPE_LOG_MESSAGE;
+    json["message"] = s;
+    
+    //Write JSON to 
+    udp.beginPacket(lastBroadcastIp, lastBroadcastPort);
+    char buffer[jsonBufSize];
+    json.printTo(buffer, sizeof(buffer));
+    udp.write(buffer);
+    udp.endPacket();
+  }
 }
 
 //**********************************************************************
@@ -685,32 +806,31 @@ void debugPrint(String s) {
 //**********************************************************************
 void loop() {
   //If ethernet client not working, attempt to re-establish
-  if (ethernetCheckConnection()) {
-    //read a message from the read fifo - this function doesn't return until data has been read
-    spiReadMessage();
-    
-    if (Msg.success) {
-      switch (Msg.eventCode) {
-        case EVENT_GAME_START:
-          handleGameStart();
-          debugPrintMatchParams();
-          postMatchParameters();
-          break;
-        case EVENT_UPDATE:
-          handleUpdate();
-          //debugPrintGameInfo();
-          computeStatistics();
-          break;
-        case EVENT_GAME_END:
-          handleGameEnd();
-          postGameEndMessage();
-          break;
-      }
-    } else {
-      debugPrintln("Failed to read message.");
+  ethernetExecute();
+  
+  //read a message from the read fifo - this function doesn't return until data has been read
+  spiReadMessage();
+  
+  if (Msg.success) {
+    switch (Msg.eventCode) {
+      case EVENT_GAME_START:
+        handleGameStart();
+        debugPrintMatchParams();
+        //postMatchParameters();
+        break;
+      case EVENT_UPDATE:
+        handleUpdate();
+        //debugPrintGameInfo();
+        computeStatistics();
+        break;
+      case EVENT_GAME_END:
+        handleGameEnd();
+        //postGameEndMessage();
+        break;
     }
   }
 }
+
 
 
 
