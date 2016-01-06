@@ -49,7 +49,7 @@
         </GroupBox>
         
         <!-- Right Side info items -->
-        <GroupBox Margin="3" Grid.Column="1" Grid.Row="0" Template="{StaticResource VerticalGroupDisplay}">
+        <GroupBox Margin="3" Grid.Column="1" Grid.Row="0" Template="{StaticResource VerticalGroupDisplay}" DataContext="{Binding SelectedConnection.GameInfo.CurrentGame}">
             <GroupBox.Header>
                 <Grid>
                     <TextBlock Margin="3" VerticalAlignment="Center" Text="Match Information" Foreground="White" />
@@ -71,7 +71,7 @@
                         </GroupBox.Header>
 
                         <Grid Background="WhiteSmoke">
-                            <TextBlock Grid.Row="0" Margin="3" HorizontalAlignment="Center" Text="{Binding GameInfo.CurrentGame.Stage, FallbackValue=N/A}" />
+                            <TextBlock Grid.Row="0" Margin="3" HorizontalAlignment="Center" Text="{Binding Stage, FallbackValue=N/A}" />
                         </Grid>
                     </GroupBox>
                 </WrapPanel>
@@ -86,7 +86,7 @@
                                 </Grid>
                             </GroupBox.Header>
                             
-                            <lview:PlayerInfoView DataContext="{Binding GameInfo.CurrentGame.Players[0]}" />
+                            <lview:PlayerInfoView DataContext="{Binding Players[0]}" />
                         </GroupBox>
 
                         <!-- Player B -->
@@ -97,7 +97,7 @@
                                 </Grid>
                             </GroupBox.Header>
 
-                            <lview:PlayerInfoView DataContext="{Binding GameInfo.CurrentGame.Players[1]}" />
+                            <lview:PlayerInfoView DataContext="{Binding Players[1]}" />
                         </GroupBox>
                     </UniformGrid>
                 </Grid>

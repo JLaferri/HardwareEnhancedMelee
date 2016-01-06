@@ -9,5 +9,6 @@ namespace Fizzi.Applications.SlippiConfiguration.Model
     static class Constants
     {
         public const int PLAYER_COUNT = 2;
+        public const int STOCK_COUNT = 4;
     }
 }

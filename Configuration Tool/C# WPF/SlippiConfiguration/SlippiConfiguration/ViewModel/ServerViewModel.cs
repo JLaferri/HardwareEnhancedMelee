@@ -10,6 +10,7 @@ using System.Text;
 using System.Threading.Tasks;
 using Fizzi.Applications.SlippiConfiguration.Common;
 using System.Windows.Threading;
+using System.Windows.Data;
 
 namespace Fizzi.Applications.SlippiConfiguration.ViewModel
 {
@@ -18,6 +19,7 @@ namespace Fizzi.Applications.SlippiConfiguration.ViewModel
         private TcpListener listener = null;
 
         public ObservableCollection<SlippiConnection> Connections { get; private set; }
+        private object syncLock = new object();
 
         private SlippiConnection _selectedConnection;
         public SlippiConnection SelectedConnection { get { return _selectedConnection; } set { this.RaiseAndSetIfChanged("SelectedConnection", ref _selectedConnection, value, PropertyChanged); } }
@@ -25,7 +27,9 @@ namespace Fizzi.Applications.SlippiConfiguration.ViewModel
         public ServerViewModel()
         {
             Connections = new ObservableCollection<SlippiConnection>();
-            Connections.Add(new SlippiConnection("192.168.1.1"));
+
+            //Enable updating collection from background thread
+            BindingOperations.EnableCollectionSynchronization(Connections, syncLock);
         }
 
         public void StartServer()
@@ -43,7 +47,7 @@ namespace Fizzi.Applications.SlippiConfiguration.ViewModel
                 var context = System.Threading.Thread.CurrentContext;
 
                 //Listen for Tcp connections until server is disabled
-                Observable.Start(async () =>
+                Observable.Start(() =>
                 {
                     while(Settings.Default.ServerEnabled)
                     {
@@ -55,8 +59,11 @@ namespace Fizzi.Applications.SlippiConfiguration.ViewModel
                         var connection = new SlippiConnection(client, stream);
 
                         //Add slippi connection to collection, prep it to be removed if an error is encountered
-                        await Dispatcher.CurrentDispatcher.InvokeAsync(() => Connections.Add(connection));
-                        connection.TerminateAction = async () => await Dispatcher.CurrentDispatcher.InvokeAsync(() => Connections.Remove(connection));
+                        lock(syncLock) Connections.Add(connection);
+                        connection.TerminateAction = () =>
+                        {
+                            lock (syncLock) Connections.Remove(connection);
+                        };
                     }
                 }, System.Reactive.Concurrency.TaskPoolScheduler.Default);
             }
@@ -75,7 +82,7 @@ namespace Fizzi.Applications.SlippiConfiguration.ViewModel
                 listener = null;
 
                 //Clear all connections
-                Connections.Clear();
+                lock (syncLock) Connections.Clear();
             }
         }
 

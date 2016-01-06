@@ -20,11 +20,14 @@ namespace Fizzi.Applications.SlippiConfiguration.Model
         //Used for Statistic Calculation
         public PlayerFrameData PreviousFrameData { get; set; }
         public PlayerStatistics Stats { get; set; }
+        public PlayerFlags Flags { get; set; }
 
         public Player()
         {
             CurrentFrameData = new PlayerFrameData();
             PreviousFrameData = new PlayerFrameData();
+            Stats = new PlayerStatistics();
+            Flags = new PlayerFlags();
         }
     }
 }

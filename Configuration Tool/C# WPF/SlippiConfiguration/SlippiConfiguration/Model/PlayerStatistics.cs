@@ -15,6 +15,17 @@ namespace Fizzi.Applications.SlippiConfiguration.Model
 
         public UInt32 ActionCount { get { return _actionCount; } set { this.RaiseAndSetIfChanged("ActionCount", ref _actionCount, value, PropertyChanged); } }
 
+        private List<StockStatistics> stocks;
+        public StockStatistics[] Stocks { get { return stocks.ToArray(); } }
+
+        public StockStatistics CurrentStock { get; private set; }
+
+        public PlayerStatistics()
+        {
+            CurrentStock = new StockStatistics();
+            stocks.Add(CurrentStock);
+        }
+
         public event PropertyChangedEventHandler PropertyChanged;
     }
 }
