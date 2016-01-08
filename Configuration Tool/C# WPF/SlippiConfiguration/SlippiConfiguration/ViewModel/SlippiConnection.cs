@@ -45,7 +45,7 @@ namespace Fizzi.Applications.SlippiConfiguration.ViewModel
                     {
                         //First always start by reading the size of the message
                         var lengthBytes = await stream.ReadExactBytesAsync(4);
-                        var messageLength = BitConverter.ToInt32(lengthBytes, 0);
+                        var messageLength = BitConverter.ToInt32(lengthBytes.Reverse().ToArray(), 0);
 
                         //Make sure message length isn't too long
                         if (messageLength > MAX_MESSAGE_LENGTH || messageLength < 0) throw new Exception("Message length was too long or too short. Length: " + messageLength);
@@ -53,8 +53,13 @@ namespace Fizzi.Applications.SlippiConfiguration.ViewModel
                         //Read messageLength bytes
                         var message = await stream.ReadExactBytesAsync(messageLength);
 
+                        //foreach (byte b in message) System.Diagnostics.Trace.WriteLine(string.Format("[{0:X2}]", b));
+
                         //Pass off message to GameInfo
                         GameInfo.ProcessMessage(message);
+                        //var buf = new byte[32];
+                        //var amountRead = stream.Read(buf, 0, 32);
+                        //for (int i = 0; i < amountRead; i++) System.Diagnostics.Trace.WriteLine(string.Format("[{0:X2}]", buf[i]));
                     }
 
                     logger.Info("Client connected flag is no longer true.");

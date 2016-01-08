@@ -22,6 +22,7 @@ namespace Fizzi.Applications.SlippiConfiguration.Model
 
         public PlayerStatistics()
         {
+            stocks = new List<StockStatistics>();
             CurrentStock = new StockStatistics();
             stocks.Add(CurrentStock);
         }

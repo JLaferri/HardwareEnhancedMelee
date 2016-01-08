@@ -12,15 +12,25 @@ namespace Fizzi.Applications.SlippiConfiguration.Common
         public async static Task<byte[]> ReadExactBytesAsync(this NetworkStream stream, int bytesToRead)
         {
             var messageSizeRead = 0;
-            var messageSizeBuf = new byte[bytesToRead];
+            var messageBuf = new byte[bytesToRead];
 
             while (messageSizeRead < bytesToRead)
             {
-                var readCount = await stream.ReadAsync(messageSizeBuf, 0, bytesToRead);
+                var readCount = await stream.ReadAsync(messageBuf, messageSizeRead, bytesToRead - messageSizeRead);
+
+                //Write down bytes read
+                //System.Diagnostics.Trace.Write(string.Format("({0}) ", readCount));
+                //for (int i = messageSizeRead; i < readCount + messageSizeRead; i++) System.Diagnostics.Trace.Write(string.Format("[{0:X2}]", messageBuf[i]));
+                //System.Diagnostics.Trace.WriteLine("");
+
                 messageSizeRead += readCount;
             }
 
-            return messageSizeBuf;
+            //System.Diagnostics.Trace.Write(string.Format("Complete: "));
+            //for (int i = 0; i < bytesToRead; i++) System.Diagnostics.Trace.Write(string.Format("[{0:X2}]", messageBuf[i]));
+            //System.Diagnostics.Trace.WriteLine("");
+
+            return messageBuf;
         }
     }
 }
