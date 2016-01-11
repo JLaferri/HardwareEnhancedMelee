@@ -9,7 +9,7 @@ namespace Fizzi.Applications.SlippiConfiguration.Model
     class Player
     {
         //Static Data
-        public byte CharacterId { get; set; }
+        public ExternalCharacter CharacterId { get; set; }
         public byte CharacterColor { get; set; }
         public byte PlayerType { get; set; }
         public byte ControllerPort { get; set; }

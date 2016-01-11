@@ -10,5 +10,8 @@ namespace Fizzi.Applications.SlippiConfiguration.Model
     {
         public const int PLAYER_COUNT = 2;
         public const int STOCK_COUNT = 4;
+
+        public const int COMBO_STRING_TIMEOUT = 45;
+        public const int FRAMES_LANDED_RECOVERY = 45;
     }
 }

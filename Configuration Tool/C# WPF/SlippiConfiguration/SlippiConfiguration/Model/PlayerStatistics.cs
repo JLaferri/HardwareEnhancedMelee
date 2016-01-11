@@ -20,13 +20,34 @@ namespace Fizzi.Applications.SlippiConfiguration.Model
 
         public StockStatistics CurrentStock { get; private set; }
 
+        private List<ComboString> comboStrings;
+        public ComboString[] ComboStrings { get { return comboStrings.ToArray(); } }
+
+        private List<Recovery> recoveries;
+        public Recovery[] Recoveries { get { return recoveries.ToArray(); } }
+
         public PlayerStatistics()
         {
             stocks = new List<StockStatistics>();
             CurrentStock = new StockStatistics();
             stocks.Add(CurrentStock);
+
+            comboStrings = new List<ComboString>();
+            recoveries = new List<Recovery>();
+        }
+
+        public void AddComboString(int hitCount, uint startFrame, uint endFrame, float startPercent, float endPercent)
+        {
+            comboStrings.Add(new ComboString(hitCount, startFrame, endFrame, startPercent, endPercent));
+        }
+
+        internal void AddRecovery(bool isSuccessful, uint startFrame, uint endFrame, float startPercent, float endPercent)
+        {
+            recoveries.Add(new Recovery(isSuccessful, startFrame, endFrame, startPercent, endPercent));
         }
 
         public event PropertyChangedEventHandler PropertyChanged;
+
+        
     }
 }

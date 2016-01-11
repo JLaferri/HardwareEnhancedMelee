@@ -113,6 +113,7 @@
     <Compile Include="Common\NetworkStreamEx.cs" />
     <Compile Include="Common\ObjectEx.cs" />
     <Compile Include="Model\BitHelper.cs" />
+    <Compile Include="Model\ComboString.cs" />
     <Compile Include="Model\Constants.cs" />
     <Compile Include="Model\Enums.cs" />
     <Compile Include="Model\GameStateHelpers.cs" />
@@ -122,6 +123,7 @@
     <Compile Include="Model\PlayerFlags.cs" />
     <Compile Include="Model\PlayerFrameData.cs" />
     <Compile Include="Model\PlayerStatistics.cs" />
+    <Compile Include="Model\Recovery.cs" />
     <Compile Include="Model\StockStatistics.cs" />
     <Compile Include="ViewModel\GameInformation.cs" />
     <Compile Include="ViewModel\ServerViewModel.cs" />
