@@ -12,8 +12,12 @@ namespace Fizzi.Applications.SlippiConfiguration.Model
     {
         //Set up backing fields for the fields that we want to appear on the UI
         public UInt32 _actionCount;
+        public float _averageEdgeguardDamage;
+        public float _averageComboStringDamage;
 
         public UInt32 ActionCount { get { return _actionCount; } set { this.RaiseAndSetIfChanged("ActionCount", ref _actionCount, value, PropertyChanged); } }
+        public float AverageEdgeguardDamage { get { return _averageEdgeguardDamage; } set { this.RaiseAndSetIfChanged("AverageEdgeguardDamage", ref _averageEdgeguardDamage, value, PropertyChanged); } }
+        public float AverageComboStringDamage { get { return _averageComboStringDamage; } set { this.RaiseAndSetIfChanged("AverageComboStringDamage", ref _averageComboStringDamage, value, PropertyChanged); } }
 
         private List<StockStatistics> stocks;
         public StockStatistics[] Stocks { get { return stocks.ToArray(); } }
@@ -39,11 +43,13 @@ namespace Fizzi.Applications.SlippiConfiguration.Model
         public void AddComboString(int hitCount, uint startFrame, uint endFrame, float startPercent, float endPercent)
         {
             comboStrings.Add(new ComboString(hitCount, startFrame, endFrame, startPercent, endPercent));
+            AverageComboStringDamage = comboStrings.Average(cs => cs.EndPercent - cs.StartPercent);
         }
 
         internal void AddRecovery(bool isSuccessful, uint startFrame, uint endFrame, float startPercent, float endPercent)
         {
             recoveries.Add(new Recovery(isSuccessful, startFrame, endFrame, startPercent, endPercent));
+            AverageEdgeguardDamage = recoveries.Average(r => r.EndPercent - r.StartPercent);
         }
 
         public event PropertyChangedEventHandler PropertyChanged;

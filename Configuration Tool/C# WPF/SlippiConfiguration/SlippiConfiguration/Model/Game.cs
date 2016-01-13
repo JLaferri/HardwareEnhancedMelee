@@ -151,12 +151,12 @@ namespace Fizzi.Applications.SlippiConfiguration.Model
                 //Increment action count when sticks change from one region to another. Don't increment when stick returns to deadzone
                 var prevAnalogRegion = GameStateHelpers.GetJoystickRegion(cp.PreviousFrameData.JoystickX, cp.PreviousFrameData.JoystickY);
                 var currentAnalogRegion = GameStateHelpers.GetJoystickRegion(cp.CurrentFrameData.JoystickX, cp.CurrentFrameData.JoystickY);
-                if ((prevAnalogRegion != currentAnalogRegion) && (currentAnalogRegion != 0)) cp.Stats.ActionCount++;
+                if ((prevAnalogRegion != currentAnalogRegion) && (currentAnalogRegion != JoystickRegion.DeadZone)) cp.Stats.ActionCount++;
 
                 //Do the same for c-stick
                 var prevCstickRegion = GameStateHelpers.GetJoystickRegion(cp.PreviousFrameData.CstickX, cp.PreviousFrameData.CstickY);
                 var currentCstickRegion = GameStateHelpers.GetJoystickRegion(cp.CurrentFrameData.CstickX, cp.CurrentFrameData.CstickY);
-                if ((prevCstickRegion != currentCstickRegion) && (currentCstickRegion != 0)) cp.Stats.ActionCount++;
+                if ((prevCstickRegion != currentCstickRegion) && (currentCstickRegion != JoystickRegion.DeadZone)) cp.Stats.ActionCount++;
 
                 //Increment action on analog trigger... I'm not sure when. This needs revision
                 if (cp.PreviousFrameData.LTrigger < 0.3 && cp.CurrentFrameData.LTrigger >= 0.3) cp.Stats.ActionCount++;
