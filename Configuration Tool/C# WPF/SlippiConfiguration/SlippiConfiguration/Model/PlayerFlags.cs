@@ -16,9 +16,8 @@ namespace Fizzi.Applications.SlippiConfiguration.Model
         public uint RecoveryStartFrame { get; set; }
 
         //Combo string stuff
-        public int StringCount { get; set; }
-        public float StringStartPercent { get; set; }
-        public uint StringStartFrame { get; set; }
+        public Animation ActionDamageDoneWith { get; set; }
+        public bool HitCountIncrementAllowed { get; set; }
         public int StringResetCounter { get; set; }
 
         public void ResetRecoveryFlags()

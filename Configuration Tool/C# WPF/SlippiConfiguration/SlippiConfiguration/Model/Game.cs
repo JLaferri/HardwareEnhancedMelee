@@ -168,36 +168,53 @@ namespace Fizzi.Applications.SlippiConfiguration.Model
                 bool opntGrabbedState = op.CurrentFrameData.Animation >= Animation.CapturePulledHi && op.CurrentFrameData.Animation <= Animation.CaptureFoot;
                 bool opntTechState = (op.CurrentFrameData.Animation >= Animation.Passive && op.CurrentFrameData.Animation <= Animation.PassiveCeil) ||
                   op.CurrentFrameData.Animation == Animation.DownBoundU || op.CurrentFrameData.Animation == Animation.DownBoundD; //If tech roll or missed tech
+                bool comboInProgress = cp.Stats.CurrentComboString != null;
 
                 //By looking for percent changes we can increment counter even when a player gets true combo'd
                 //The damage state requirement makes it so things like fox's lasers, grab pummels, pichu damaging self, etc don't increment count
                 if (opntTookDamage && (opntDamagedState || opntGrabbedState))
                 {
-                    if (cp.Flags.StringCount == 0)
+                    if (!comboInProgress)
                     {
-                        cp.Flags.StringStartPercent = op.PreviousFrameData.Percent;
-                        cp.Flags.StringStartFrame = FrameCounter;
+                        cp.Stats.NewComboString(FrameCounter, op.PreviousFrameData.Percent);
+                        cp.Flags.HitCountIncrementAllowed = false;
+                        cp.Flags.ActionDamageDoneWith = cp.CurrentFrameData.Animation;
                         //Serial.print(String("Player ") + (char)(65 + i)); Serial.println(" got an opening!");
                     }
-
-                    cp.Flags.StringCount++; //increment number of hits
+                    else if (cp.Flags.HitCountIncrementAllowed)
+                    {
+                        //If combo is in progress, increment hit count the first time a move hits
+                        cp.Stats.CurrentComboString.HitCount++;
+                        cp.Flags.HitCountIncrementAllowed = false;
+                        cp.Flags.ActionDamageDoneWith = cp.CurrentFrameData.Animation;
+                    }
                 }
 
-                //Reset combo string counter when somebody dies or doesn't get hit for too long
-                if (opntDamagedState || opntGrabbedState || opntTechState) cp.Flags.StringResetCounter = 0;
-                else if (cp.Flags.StringCount > 0) cp.Flags.StringResetCounter++;
-
-                //Mark combo completed if opponent lost his stock or if the counter is greater than threshold frames
-                if (cp.Flags.StringCount > 0 && (opntLostStock || lostStock || cp.Flags.StringResetCounter > Constants.COMBO_STRING_TIMEOUT))
+                //Reset hit count increment allowed when player switches to a different animation
+                if (!cp.Flags.HitCountIncrementAllowed && cp.Flags.ActionDamageDoneWith != cp.CurrentFrameData.Animation)
                 {
-                    //Store combo string
-                    cp.Stats.AddComboString(cp.Flags.StringCount, cp.Flags.StringStartFrame, FrameCounter, cp.Flags.StringStartPercent, op.PreviousFrameData.Percent);
+                    cp.Flags.HitCountIncrementAllowed = true;
+                }
 
-                    System.Diagnostics.Debug.WriteLine("Player {0} combo ended.", (char)(65 + i));
-                    //Serial.print(String("Player ") + (char)(65 + i)); Serial.println(" combo ended.");
+                if (comboInProgress)
+                {
+                    //Update percent and frame of current combo
+                    cp.Stats.CurrentComboString.EndFrame = FrameCounter;
+                    cp.Stats.CurrentComboString.EndPercent = op.PreviousFrameData.Percent;
 
-                    //Reset string count
-                    cp.Flags.StringCount = 0;
+                    //Reset combo string counter when somebody dies or doesn't get hit for too long
+                    if (opntDamagedState || opntGrabbedState || opntTechState) cp.Flags.StringResetCounter = 0;
+                    else cp.Flags.StringResetCounter++;
+
+                    //Mark combo completed if opponent lost his stock or if the counter is greater than threshold frames
+                    if (opntLostStock || lostStock || cp.Flags.StringResetCounter > Constants.COMBO_STRING_TIMEOUT)
+                    {
+                        //Store combo string
+                        cp.Stats.EndComboString();
+
+                        System.Diagnostics.Debug.WriteLine("Player {0} combo ended.", (char)(65 + i));
+                        //Serial.print(String("Player ") + (char)(65 + i)); Serial.println(" combo ended.");
+                    }
                 }
 
                 ////--------------------------- Recovery detection --------------------------------------------------
