@@ -10,7 +10,7 @@ namespace Fizzi.Applications.SlippiConfiguration.Model
     {
         FountainOfDreams = 2,
         PokemonStadium = 3,
-        YoshisIsland = 16,
+        YoshisStory = 8,
         DreamLand = 28,
         Battlefield = 31,
         FinalDestination = 32

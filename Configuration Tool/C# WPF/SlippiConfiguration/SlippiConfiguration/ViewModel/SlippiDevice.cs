@@ -38,6 +38,7 @@ namespace Fizzi.Applications.SlippiConfiguration.ViewModel
         public string Log { get { return logBuilder.ToString(); } }
 
         public ICommand EraseFlashCommand { get; private set; }
+        public ICommand SetTargetCommand { get; private set; }
 
         public SlippiDevice(string mac, IPAddress address)
         {
@@ -45,6 +46,7 @@ namespace Fizzi.Applications.SlippiConfiguration.ViewModel
             DeviceIp = address;
 
             EraseFlashCommand = Command.Create(() => true, EraseFlash);
+            SetTargetCommand = Command.Create(() => true, () => ChangeTarget(PendingTargetIp, PendingTargetPort));
         }
 
         public void HandleUdpMessage(byte[] message)
@@ -90,7 +92,13 @@ namespace Fizzi.Applications.SlippiConfiguration.ViewModel
 
         public void ChangeTarget(IPAddress address, int port)
         {
-
+            UdpClient client = new UdpClient();
+            IPEndPoint ip = new IPEndPoint(DeviceIp, 3637);
+            var addressBytes = address.GetAddressBytes();
+            var sendString = string.Format("{{\"type\":{0},\"ip1\":{1},\"ip2\":{2},\"ip3\":{3},\"ip4\":{4},\"port\":{5}}}",
+                (int)UdpMessageType.SetTarget, addressBytes[0], addressBytes[1], addressBytes[2], addressBytes[3], port);
+            byte[] bytes = Encoding.ASCII.GetBytes(sendString);
+            client.Send(bytes, bytes.Length, ip);
         }
 
         public event PropertyChangedEventHandler PropertyChanged;

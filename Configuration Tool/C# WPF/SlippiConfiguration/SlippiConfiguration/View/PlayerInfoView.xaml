@@ -108,6 +108,18 @@
                     <TextBlock Margin="3" HorizontalAlignment="Center" Text="{Binding Stats.ActionCount, FallbackValue=N/A}" />
                 </Grid>
             </GroupBox>
+
+            <GroupBox Margin="3" Template="{StaticResource VerticalGroupDisplay}">
+                <GroupBox.Header>
+                    <Grid>
+                        <TextBlock Margin="3" HorizontalAlignment="Center" Text="ComboHits" Foreground="White" />
+                    </Grid>
+                </GroupBox.Header>
+
+                <Grid Background="WhiteSmoke">
+                    <TextBlock Margin="3" HorizontalAlignment="Center" Text="{Binding Stats.CurrentComboString.HitCount, FallbackValue=N/A}" />
+                </Grid>
+            </GroupBox>
         </WrapPanel>
     </Grid>
 </UserControl>

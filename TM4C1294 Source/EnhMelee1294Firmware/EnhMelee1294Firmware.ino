@@ -168,7 +168,7 @@ void handleGameEnd() {
 //**********************************************************************
 //*                        Ethernet
 //**********************************************************************
-#define UDP_MAX_PACKET_SIZE 100
+#define UDP_MAX_PACKET_SIZE 1024
 #define RECONNECT_TIME_MS 15000
 
 #define MSG_TYPE_DISCOVERY 1
@@ -239,9 +239,9 @@ void ethernetInitialize() {
     serverPort = EEPROM.read(i++) << 8 | EEPROM.read(i++);
     
     //Load debug flags
-    byte flags = EEPROM.read(i++);
-    sendUdpDebugMessages = flags & 0x1;
-    sendSerialDebugMessages = flags & 0x2;
+//    byte flags = EEPROM.read(i++);
+//    sendUdpDebugMessages = flags & 0x1;
+//    sendSerialDebugMessages = flags & 0x2;
   }
   
   debugPrintln("Getting MAC Address from registers.");
@@ -288,11 +288,6 @@ void listenForUdpPacket() {
   int packetSize = udp.parsePacket();
   if (packetSize) {
     if (packetSize > UDP_MAX_PACKET_SIZE) return;
-  
-    //Get IP and port of the UDP sender
-    lastBroadcastIp = udp.remoteIP();
-    lastBroadcastPort = udp.remotePort();
-    debugPrintln("Received UDP packet from: " + ipPortToString(lastBroadcastIp, lastBroadcastPort));
     
     //Read UDP packet into buffer
     char udpPacketBuffer[UDP_MAX_PACKET_SIZE];
@@ -311,10 +306,17 @@ void listenForUdpPacket() {
     JsonObject& resp = jsonWriteBuffer.createObject();
     
     //TODO: Test what happens when a UDP message is sent that doesn't contain a type node
+    byte ip1, ip2, ip3, ip4;
+    int receivedPort;
     
     //Handle command received
     switch(command) {
       case MSG_TYPE_DISCOVERY:
+        //Get IP and port of the UDP sender
+        lastBroadcastIp = udp.remoteIP();
+        lastBroadcastPort = udp.remotePort();
+        debugPrintln("Received UDP packet from: " + ipPortToString(lastBroadcastIp, lastBroadcastPort));
+    
         debugPrintln("Responding to discovery request. " + macToString());
         //Add command and mac elements to JSON
         resp["type"] = MSG_TYPE_DISCOVERY;
@@ -336,18 +338,44 @@ void listenForUdpPacket() {
         
         break;
       case MSG_TYPE_SET_TARGET:
+        debugPrintln("Received request to change IP/Port of target server.");
+        
 //        String targetIpString = root["targetIp"];
 //        int targetPort = root["targetPort"];
 //        sendSerialDebugMessages = root["debugSerial"];
 //        sendUdpDebugMessages = root["debugUdp"];
-//        
-//        //If IP or port as changed, disconnect client
-//        if (!ipPortToString(serverIp, serverPort).equals(targetIpString + String(":") + String(targetPort))) {
-//          debugPrintln("Disconnecting from old client.");
-//          client.stop();
-//        }
+        ip1 = root["ip1"];
+        ip2 = root["ip2"];
+        ip3 = root["ip3"];
+        ip4 = root["ip4"];
+        receivedPort = root["port"];
         
-        //TODO: Write new settings to EEPROM
+        //If IP or port as changed, disconnect client
+        if (ip1 != serverIp[0] || ip2 != serverIp[1] || ip3 != serverIp[2] || ip4 != serverIp[3] || receivedPort != serverPort) {
+          debugPrintln("Change to IP or port requested.");
+          serverIp[0] = ip1;
+          serverIp[1] = ip2;
+          serverIp[2] = ip3;
+          serverIp[3] = ip4;
+          serverPort = receivedPort;
+          
+          debugPrintln("Disconnecting from old client.");
+          client.stop();
+          
+          //Reset connection timer to allow instant connection attempt
+          timeOfLastFailedConnection = 0;
+          
+          //Write new settings to EEPROM
+          debugPrintln("Writing new IP settings to EEPROM");
+          int i = 0;
+          EEPROM.write(i++, EEPROM_SCHEMA);
+          EEPROM.write(i++, ip1);
+          EEPROM.write(i++, ip2);
+          EEPROM.write(i++, ip3);
+          EEPROM.write(i++, ip4);
+          EEPROM.write(i++, receivedPort >> 8 & 0xFF);
+          EEPROM.write(i++, receivedPort & 0xFF);
+        }
         
         break;
       case MSG_TYPE_FLASH_ERASE:

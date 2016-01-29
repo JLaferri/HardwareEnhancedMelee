@@ -130,7 +130,7 @@
                     <TextBox Margin="3" Grid.Column="1" Grid.Row="1" Text="{Binding SelectedDevice.PendingTargetPort, NotifyOnValidationError=True}"
                              TextChanged="TextBox_TextChanged" />
 
-                    <Button Margin="3" Grid.Row="2" Grid.ColumnSpan="2" Content="Commit Target" />
+                    <Button Margin="3" Grid.Row="2" Grid.ColumnSpan="2" Content="Commit Target" Command="{Binding SelectedDevice.SetTargetCommand}" />
                 </Grid>
             </GroupBox>
 

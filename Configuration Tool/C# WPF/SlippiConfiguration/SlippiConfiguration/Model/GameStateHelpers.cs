@@ -32,7 +32,7 @@ namespace Fizzi.Applications.SlippiConfiguration.Model
                     return x < -68.35 || x > 68.35 || y < -10;
                 case Stage.PokemonStadium:
                     return x < -92.75 || x > 92.75 || y < -10;
-                case Stage.YoshisIsland:
+                case Stage.YoshisStory:
                     return x < -61 || x > 61 || y < -10;
                 case Stage.DreamLand:
                     return x < -82.27 || x > 82.27 || y < -10;
