@@ -1,13 +1,13 @@
-#include <EEPROM.h>
-
 #include <SPI.h>
 #include <Ethernet.h>
+#include <EEPROM.h>
 #include <EthernetUdp.h>
 #include <ArduinoJson.h>
 
 #include "SSI3DMASlave.h"
 #include "enhmelee.h"
 #include "Flash.h"
+#include "serverConfig.h"
 
 //**********************************************************************
 //*                         ASM Event Codes
@@ -23,6 +23,11 @@ void asmEventsInitialize() {
   asmEvents[EVENT_UPDATE] = 0x7A;
   asmEvents[EVENT_GAME_END] = 0x1;
 }
+
+//**********************************************************************
+//*                          Global Variables
+//**********************************************************************
+bool connectAttempted = false;
 
 //**********************************************************************
 //*               SPI Slave Communication Functions
@@ -59,6 +64,7 @@ void spiReadMessage() {
 //*                         Event Handlers
 //**********************************************************************
 Game CurrentGame = { };
+bool gameInProgress = false;
 
 //The read operators will read a value and increment the index so the next read will read in the correct location
 uint8_t readByte(uint8_t* a, int& idx) {
@@ -83,13 +89,12 @@ float readFloat(uint8_t* a, int& idx) {
 }
 
 void handleGameStart() {
-  writeMsg();
-  
   uint8_t* data = Msg.data;
   int idx = 0;
   
   //Reset CurrentGame variable
   CurrentGame = { };
+  gameInProgress = true;
   
   //Load stage ID
   CurrentGame.stage = readHalf(data, idx);
@@ -106,8 +111,6 @@ void handleGameStart() {
 }
 
 void handleUpdate() {
-  writeMsg();
-  
   uint8_t* data = Msg.data;
   int idx = 0;
   
@@ -158,12 +161,14 @@ void handleUpdate() {
 }
 
 void handleGameEnd() {
-  writeMsg();
-  
   uint8_t* data = Msg.data;
   int idx = 0;
   
   CurrentGame.winCondition = readByte(data, idx);
+  
+  // Clear flags used to control when connection attempts are made
+  gameInProgress = false;
+  connectAttempted = false;
 }
 
 //**********************************************************************
@@ -171,6 +176,7 @@ void handleGameEnd() {
 //**********************************************************************
 #define UDP_MAX_PACKET_SIZE 1024
 #define RECONNECT_TIME_MS 15000
+#define WAIT_FOR_RESPONSE_MS 20000
 
 #define MSG_TYPE_DISCOVERY 1
 #define MSG_TYPE_FLASH_ERASE 2
@@ -179,13 +185,20 @@ void handleGameEnd() {
 
 #define EEPROM_SCHEMA 0x1
 
+#define GAME_BUFFER_COUNT 10
+
 //MAC address. This address will be overwritten by MAC configured in USERREG0 and USERREG1 during ethernet initialization
 byte mac[] = { 0x00, 0x1A, 0xB6, 0x02, 0xF5, 0x8C };
 //byte mac[] = { 0x00, 0x1A, 0xB6, 0x02, 0xFA, 0xF8 };
 
-IPAddress serverIp(10, 0, 0, 13);
-int serverPort = 3636;
-long timeOfLastFailedConnection = 0;
+Game completedGamesBuffer[GAME_BUFFER_COUNT];
+
+// The following server information should be defined in serverConfig.h
+//char serverName[] = "google.com";
+//int serverPort = 80;
+//char page[] = "/page";
+long timeSentPost = 0;
+bool didSendPost = false;
 EthernetClient client;
 
 int udpPort = 3637;
@@ -194,9 +207,6 @@ int lastBroadcastPort = 0;
 EthernetUDP udp;
 
 bool ethernetInitialized = false;
-
-bool sendUdpDebugMessages = true;
-bool sendSerialDebugMessages = true;
 
 String ipPortToString(IPAddress ip, int port) {
   char ipAddressString[30];
@@ -228,16 +238,16 @@ void ethernetInitialize() {
   
   //Ensure that EEPROM has been written to with the proper schema before reading
   if (schemaRead == EEPROM_SCHEMA) {
-    debugPrintln("Loading settings from EEPROM");
+//    debugPrintln("Loading settings from EEPROM");
     
-    //Load target IP address
-    serverIp[0] = EEPROM.read(i++);
-    serverIp[1] = EEPROM.read(i++);
-    serverIp[2] = EEPROM.read(i++);
-    serverIp[3] = EEPROM.read(i++);
-    
-    //Load port
-    serverPort = EEPROM.read(i++) << 8 | EEPROM.read(i++);
+//    //Load target IP address
+//    serverIp[0] = EEPROM.read(i++);
+//    serverIp[1] = EEPROM.read(i++);
+//    serverIp[2] = EEPROM.read(i++);
+//    serverIp[3] = EEPROM.read(i++);
+//    
+//    //Load port
+//    serverPort = EEPROM.read(i++) << 8 | EEPROM.read(i++);
     
     //Load debug flags
 //    byte flags = EEPROM.read(i++);
@@ -256,33 +266,17 @@ void ethernetInitialize() {
     debugPrintln("Obtained IP address: " + ipToString(Ethernet.localIP()));
   } else {
     debugPrintln("Failed to configure Ethernet using DHCP");
+    ethernetInitialized = false;
   }
   
   if (udp.begin(udpPort)) {
     debugPrintln("Initialized UDP");
   } else {
     debugPrintln("Failed to initialize UDP");
+    ethernetInitialized = false;
   }
   
   ethernetInitialized = true;
-}
-
-void maintainClientConnection() {
-  //If client is connected, nothing to do
-  if (client.connected()) return;
-  
-  //If connection attempt was recently failed, don't attempt to connect
-  if (timeOfLastFailedConnection != 0 && millis() - timeOfLastFailedConnection < RECONNECT_TIME_MS) return;
-  
-  //Attempt to connect to server
-  debugPrintln("Attempting to connect to server at " + ipPortToString(serverIp, serverPort) + "...");
-  
-  if (client.connect(serverIp, serverPort)) {
-    debugPrintln("Connection to server successful.");
-  } else {
-    timeOfLastFailedConnection = millis();
-    debugPrintln("Connection to server failed."); 
-  }
 }
 
 void listenForUdpPacket() {
@@ -345,38 +339,38 @@ void listenForUdpPacket() {
 //        int targetPort = root["targetPort"];
 //        sendSerialDebugMessages = root["debugSerial"];
 //        sendUdpDebugMessages = root["debugUdp"];
-        ip1 = root["ip1"];
-        ip2 = root["ip2"];
-        ip3 = root["ip3"];
-        ip4 = root["ip4"];
-        receivedPort = root["port"];
-        
-        //If IP or port as changed, disconnect client
-        if (ip1 != serverIp[0] || ip2 != serverIp[1] || ip3 != serverIp[2] || ip4 != serverIp[3] || receivedPort != serverPort) {
-          debugPrintln("Change to IP or port requested.");
-          serverIp[0] = ip1;
-          serverIp[1] = ip2;
-          serverIp[2] = ip3;
-          serverIp[3] = ip4;
-          serverPort = receivedPort;
-          
-          debugPrintln("Disconnecting from old client.");
-          client.stop();
-          
-          //Reset connection timer to allow instant connection attempt
-          timeOfLastFailedConnection = 0;
-          
-          //Write new settings to EEPROM
-          debugPrintln("Writing new IP settings to EEPROM");
-          int i = 0;
-          EEPROM.write(i++, EEPROM_SCHEMA);
-          EEPROM.write(i++, ip1);
-          EEPROM.write(i++, ip2);
-          EEPROM.write(i++, ip3);
-          EEPROM.write(i++, ip4);
-          EEPROM.write(i++, receivedPort >> 8 & 0xFF);
-          EEPROM.write(i++, receivedPort & 0xFF);
-        }
+//        ip1 = root["ip1"];
+//        ip2 = root["ip2"];
+//        ip3 = root["ip3"];
+//        ip4 = root["ip4"];
+//        receivedPort = root["port"];
+//        
+//        //If IP or port as changed, disconnect client
+//        if (ip1 != serverIp[0] || ip2 != serverIp[1] || ip3 != serverIp[2] || ip4 != serverIp[3] || receivedPort != serverPort) {
+//          debugPrintln("Change to IP or port requested.");
+//          serverIp[0] = ip1;
+//          serverIp[1] = ip2;
+//          serverIp[2] = ip3;
+//          serverIp[3] = ip4;
+//          serverPort = receivedPort;
+//          
+//          debugPrintln("Disconnecting from old client.");
+//          client.stop();
+//          
+//          //Reset connection timer to allow instant connection attempt
+//          timeOfLastFailedConnection = 0;
+//          
+//          //Write new settings to EEPROM
+//          debugPrintln("Writing new IP settings to EEPROM");
+//          int i = 0;
+//          EEPROM.write(i++, EEPROM_SCHEMA);
+//          EEPROM.write(i++, ip1);
+//          EEPROM.write(i++, ip2);
+//          EEPROM.write(i++, ip3);
+//          EEPROM.write(i++, ip4);
+//          EEPROM.write(i++, receivedPort >> 8 & 0xFF);
+//          EEPROM.write(i++, receivedPort & 0xFF);
+//        }
         
         break;
       case MSG_TYPE_FLASH_ERASE:
@@ -388,10 +382,101 @@ void listenForUdpPacket() {
   }
 }
 
+void unshiftCurrentGame() {
+  // Shift everything to the right
+  for (int i = GAME_BUFFER_COUNT - 2; i >= 0; i--) {
+    completedGamesBuffer[i + 1] = completedGamesBuffer[i];
+  }
+  
+  // Add currentGame to the front
+  completedGamesBuffer[0] = CurrentGame;
+}
+
+void clearGamesBuffer() {
+  for (int i = 0; i < GAME_BUFFER_COUNT; i++) {
+    completedGamesBuffer[i] = { };
+  }
+}
+
+void handlePostResponse() {
+  if (!client.connected()) {
+    // If we have lost connection, let's just reset state
+    debugPrintln("Lost connection waiting for response.");
+    didSendPost = false;
+    client.stop();
+    return;
+  }
+  
+  // If we are connected, let's first check if we've timed out
+  long currentTime = millis();
+  if (currentTime - timeSentPost > WAIT_FOR_RESPONSE_MS) {
+    debugPrintln("Timed out waiting for response.");
+    didSendPost = false;
+    client.stop();
+    return;
+  }
+  
+  // If we received something from the server, let's just for now assume it was successful
+  if (client.available()) {
+    debugPrintln("Received response from server!");
+    
+    clearGamesBuffer();
+    didSendPost = false;
+    client.stop();
+    return;
+  }
+}
+
+void writeOutGames() {
+  Game& firstGame = completedGamesBuffer[0];
+  if (firstGame.frameCounter == 0) {
+    // If we dont have any games to write, do nothing
+    return;
+  }
+  
+  if (didSendPost) {
+    handlePostResponse();
+    return;  
+  }
+  
+  // Connecting and sending can take a long time which can cause us to miss SPI bus reads 
+  // so only do it if we don't have a game in progress
+  // connectAttempted is here such that we will only try connecting once after a game ends
+  // this flag is cleared when a game ends
+  if (gameInProgress || connectAttempted) {
+    return;
+  }
+  
+  char outBuf[64];
+  connectAttempted = true;
+  long connectTime = millis();
+  if (client.connect(serverName, serverPort)) {
+    long successTime = millis();
+    debugPrintln("Connected! Took " + String(successTime - connectTime) + " ms. Writing games...");
+    
+    // send the header
+    sprintf(outBuf,"POST %s HTTP/1.1", page);
+    client.println(outBuf);
+    sprintf(outBuf,"Host: %s", serverName);
+    client.println(outBuf);
+    client.println(F("Connection: close\r\nContent-Type: application/json"));
+    printGameSummaries();
+    
+    // Go into state that will wait for response
+    timeSentPost = millis();
+    didSendPost = true;
+  } else {
+    long failTime = millis();
+     debugPrintln(
+       "Failed to connect to " + String(serverName) + " on port " + 
+       String(serverPort) + ". Took " + String(failTime - connectTime) + " ms."
+     );
+  }
+}
+
 //This is the function that should be called every loop of the application
 int ethernetExecute() {
   listenForUdpPacket();
-  maintainClientConnection();
   
   Ethernet.maintain();
   return 1;
@@ -400,64 +485,42 @@ int ethernetExecute() {
 //**********************************************************************
 //*                           JSON
 //**********************************************************************
-void postMatchParameters() {
-  if (client.connected()) {
-    //Create JSON
-    StaticJsonBuffer<400> jsonBuffer;
+void printGameSummaries() {
+  StaticJsonBuffer<20000> jsonBuffer;
   
-    JsonObject& root = jsonBuffer.createObject();
-    root["stage"] = CurrentGame.stage;
+  JsonObject& root = jsonBuffer.createObject();
+  root["macAddress"] = macToString();
   
-    JsonArray& data = root.createNestedArray("players");
-    for (int i = 0; i < PLAYER_COUNT; i++) {
-      Player* p = &CurrentGame.players[i];
-      JsonObject& item = jsonBuffer.createObject();
-      
-      item["port"] = p->controllerPort + 1;
-      item["character"] = p->characterId;
-      item["color"] = p->characterColor;
-      item["type"] = p->playerType;
+  JsonArray& games = root.createNestedArray("games");
   
-      data.add(item);
+  for (int k = (GAME_BUFFER_COUNT - 1); k >= 0; k--) {
+    Game& kGame = completedGamesBuffer[k];
+    if (kGame.frameCounter == 0) {
+      // If this game element is empty, don't write it out
+      continue;
     }
-  
-    root.printTo(client);
-    client.println();
-  }
-}
-
-void postConnectedMessage() {
-  if (client.connected()) {    
-    //Create JSON
-    StaticJsonBuffer<200> jsonBuffer;
-  
-    JsonObject& root = jsonBuffer.createObject();
-    JsonArray& macBytes = root.createNestedArray("mac");
-    for (int i = 0; i < sizeof(mac); i++) macBytes.add(mac[i]);
-  
-    root.printTo(client);
-    client.println();
-  }
-}
-
-void postGameEndMessage() {
-  if (client.connected()) {
-    StaticJsonBuffer<10000> jsonBuffer;
     
-    JsonObject& root = jsonBuffer.createObject();
-    root["frames"] = CurrentGame.frameCounter;
-    root["framesMissed"] = CurrentGame.framesMissed;
-    root["winCondition"] = CurrentGame.winCondition;
+    JsonObject& game = jsonBuffer.createObject();
+    game["frames"] = kGame.frameCounter;
+    game["framesMissed"] = kGame.framesMissed;
+    game["winCondition"] = kGame.winCondition;
+    game["stage"] = kGame.stage;
 
-    float totalActiveGameFrames = float(CurrentGame.frameCounter);
+    float totalActiveGameFrames = float(kGame.frameCounter);
     
-    JsonArray& data = root.createNestedArray("players");
+    JsonArray& data = game.createNestedArray("players");
     for (int i = 0; i < PLAYER_COUNT; i++) {
       //debugPrintln(String("Writing out player ") + i);
-      PlayerStatistics& ps = CurrentGame.players[i].stats;
+      Player& currentPlayer = kGame.players[i];
+      PlayerStatistics& ps = currentPlayer.stats;
       JsonObject& item = jsonBuffer.createObject();
 
-      item["stocksRemaining"] = CurrentGame.players[i].currentFrameData.stocks;
+      item["port"] = currentPlayer.controllerPort + 1;
+      item["character"] = currentPlayer.characterId;
+      item["color"] = currentPlayer.characterColor;
+      item["playerType"] = currentPlayer.playerType;
+      
+      item["stocksRemaining"] = currentPlayer.currentFrameData.stocks;
       
       item["apm"] = 3600 * (ps.actionCount / totalActiveGameFrames);
       
@@ -511,28 +574,18 @@ void postGameEndMessage() {
       
       data.add(item);
     }
-
-    root.printTo(client);
-    client.println();
+    
+    games.add(game);
   }
-}
 
-void writeMsg() {
-  if (client.connected()) {
-    int realMsgSize = Msg.messageSize + 1;
-    
-    //Write message length
-    client.write(realMsgSize >> 24 & 0xFF);
-    client.write(realMsgSize >> 16 & 0xFF);
-    client.write(realMsgSize >> 8 & 0xFF);
-    client.write(realMsgSize & 0xFF);
-    
-    //Write message code
-    client.write(Msg.eventCode);
-    
-    //Write message
-    client.write(Msg.data, Msg.messageSize);
-  }  
+  char outBuf[64];
+  int length = root.measureLength();
+  debugPrintln("Length is " + String(length));
+  sprintf(outBuf, "Content-Length: %u\r\n", length);
+  client.println(outBuf);
+  root.printTo(client);
+  client.println();
+  debugPrintln("Done printing");
 }
 
 //**********************************************************************
@@ -756,6 +809,7 @@ void setup() {
   
   debugPrintln("Starting initialization.");
   
+  checkFlashErase();
   ethernetInitialize();
   asmEventsInitialize();
   spiSlaveInitialize();
@@ -766,6 +820,9 @@ void setup() {
 //**********************************************************************
 //*                             Debug
 //**********************************************************************
+bool sendUdpDebugMessages = true;
+bool sendSerialDebugMessages = true;
+
 void debugPrintMatchParams() {
   debugPrintln(String("Stage: (") + CurrentGame.stage + String(") ") + String(stages[CurrentGame.stage]));
   for (int i = 0; i < PLAYER_COUNT; i++) {
@@ -837,7 +894,7 @@ void loop() {
   //If ethernet client not working, attempt to re-establish
   ethernetExecute();
   
-  //read a message from the read fifo - this function doesn't return until data has been read
+  //read a message from the read fifo - this function returns if no message available
   spiReadMessage();
   
   if (Msg.success) {
@@ -845,7 +902,6 @@ void loop() {
       case EVENT_GAME_START:
         handleGameStart();
         debugPrintMatchParams();
-        //postMatchParameters();
         break;
       case EVENT_UPDATE:
         handleUpdate();
@@ -854,12 +910,12 @@ void loop() {
         break;
       case EVENT_GAME_END:
         handleGameEnd();
-        //postGameEndMessage();
+        unshiftCurrentGame();
         break;
     }
   }
+  
+  //this will write games out to the server if there are any
+  writeOutGames();
 }
-
-
-
 
