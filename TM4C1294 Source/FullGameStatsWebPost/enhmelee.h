@@ -4,6 +4,8 @@
 
 #define PLAYER_COUNT 2
 #define STOCK_COUNT 4
+#define COMBO_STRING_BUFFER_SIZE 200
+#define RECOVERY_BUFFER_SIZE 100
 #define MAX_FRAMES 28800
 #define MSG_BUFFER_SIZE 1024
 
@@ -50,6 +52,8 @@ typedef struct {
 
 typedef struct {
   //Recovery
+  float recoveryStartPercent = 0;
+  uint32_t recoveryStartFrame = 0;
   bool isRecovering = false;
   bool isHitOffStage = false;
   bool isLandedOnStage = false;
@@ -64,13 +68,6 @@ typedef struct {
   uint32_t framesWithoutDamage;
 } PlayerFlags;
 
-void resetRecoveryFlags(PlayerFlags& flags) {
-  flags.isRecovering = false;
-  flags.isHitOffStage = false;
-  flags.isLandedOnStage = false;
-  flags.framesSinceLanding = 0;
-}
-
 typedef struct {
 	uint32_t frame;
 	float percent;
@@ -83,6 +80,22 @@ typedef struct {
   //Combo String
   uint16_t killedInOpenings;
 } StockStatistics;
+
+typedef struct {
+  uint32_t frameStart;
+  uint32_t frameEnd;
+  float percentStart;
+  float percentEnd;
+  uint16_t hitCount;
+} ComboString;
+
+typedef struct {
+  uint32_t frameStart;
+  uint32_t frameEnd;
+  float percentStart;
+  float percentEnd;
+  bool isSuccessful;
+} Recovery;
 
 typedef struct {
   //Positional
@@ -122,7 +135,12 @@ typedef struct {
   float averageTimePerString;
   float averageHitsPerString;
   
+  uint8_t comboStringIndex = 0;
+  uint8_t recoveryIndex = 0;
+  
   StockStatistics stocks[STOCK_COUNT];
+  ComboString comboStrings[COMBO_STRING_BUFFER_SIZE];
+  Recovery recoveries[RECOVERY_BUFFER_SIZE];
 } PlayerStatistics;
 
 typedef struct {
@@ -194,4 +212,23 @@ uint8_t getJoystickRegion(float x, float y) {
   else return JOYSTICK_DZ;
 }
 
+void appendRecovery(bool successfulRecovery, Player& cp, uint32_t frameCounter) {
+  Recovery& r =  cp.stats.recoveries[cp.stats.recoveryIndex];
+  r.frameStart = cp.flags.recoveryStartFrame;
+  r.frameEnd = frameCounter;
+  r.percentStart = cp.flags.recoveryStartPercent;
+  r.percentEnd = cp.previousFrameData.percent;
+  r.isSuccessful = successfulRecovery;
+  
+  if (cp.stats.recoveryIndex < RECOVERY_BUFFER_SIZE - 1) {
+     cp.stats.recoveryIndex++;
+  }
+}
+
+void resetRecoveryFlags(PlayerFlags& flags) {
+  flags.isRecovering = false;
+  flags.isHitOffStage = false;
+  flags.isLandedOnStage = false;
+  flags.framesSinceLanding = 0;
+}
 

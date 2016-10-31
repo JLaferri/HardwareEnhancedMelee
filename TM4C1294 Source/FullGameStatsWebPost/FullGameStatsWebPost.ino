@@ -189,7 +189,7 @@ bool handleGameEnd() {
 
 #define EEPROM_SCHEMA 0x1
 
-#define GAME_BUFFER_COUNT 10
+#define GAME_BUFFER_COUNT 3
 
 //MAC address. This address will be overwritten by MAC configured in USERREG0 and USERREG1 during ethernet initialization
 byte mac[] = { 0x00, 0x1A, 0xB6, 0x02, 0xF5, 0x8C };
@@ -576,6 +576,42 @@ void printGameSummaries() {
         }
       }
       
+      JsonArray& comboStrings = item.createNestedArray("comboStrings");
+      for (int j = 0; j < COMBO_STRING_BUFFER_SIZE; j++) {
+        ComboString& cs = ps.comboStrings[j];
+       
+        if (cs.frameEnd == 0) {
+          break;
+        } 
+        
+        JsonObject& comboString = jsonBuffer.createObject();
+        comboString["frameStart"] = cs.frameStart;
+        comboString["frameEnd"] = cs.frameEnd;
+        comboString["percentStart"] = cs.percentStart;
+        comboString["percentEnd"] = cs.percentEnd;
+        comboString["hitCount"] = cs.hitCount;
+        
+        comboStrings.add(comboString);
+      }
+      
+      JsonArray& recoveries = item.createNestedArray("recoveries");
+      for (int j = 0; j < RECOVERY_BUFFER_SIZE; j++) {
+        Recovery& r = ps.recoveries[j];
+       
+        if (r.frameEnd == 0) {
+          break;
+        } 
+        
+        JsonObject& recovery = jsonBuffer.createObject();
+        recovery["frameStart"] = r.frameStart;
+        recovery["frameEnd"] = r.frameEnd;
+        recovery["percentStart"] = r.percentStart;
+        recovery["percentEnd"] = r.percentEnd;
+        recovery["isSuccessful"] = r.isSuccessful;
+        
+        recoveries.add(recovery);
+      }
+      
       data.add(item);
     }
     
@@ -687,7 +723,16 @@ void computeStatistics() {
       if (frames > cp.stats.mostTimeString) cp.stats.mostTimeString = frames;
       if (hits > cp.stats.mostHitsString) cp.stats.mostHitsString = hits;
 
+      ComboString& cs = cp.stats.comboStrings[cp.stats.comboStringIndex];
+      cs.frameStart = cp.flags.stringStartFrame;
+      cs.frameEnd = CurrentGame.frameCounter;
+      cs.percentStart = cp.flags.stringStartPercent;
+      cs.percentEnd = op.previousFrameData.percent;
+      cs.hitCount = hits;
       
+      if (cp.stats.comboStringIndex < COMBO_STRING_BUFFER_SIZE - 1) {
+         cp.stats.comboStringIndex++;
+      }
       //debugPrint(String("Player ") + (char)(65 + i)); debugPrintln(String(" combo ended. (") + percent + String("%, ") + hits + String(" hits, ") + frames + String(" frames)"));
       
       //Reset string count
@@ -728,6 +773,8 @@ void computeStatistics() {
     else if (!cp.flags.isRecovering && cp.flags.isHitOffStage && !beingDamaged && !isDying && isOffStage) {
       //If player exited damage state off stage
       cp.flags.isRecovering = true;
+      cp.flags.recoveryStartPercent = cp.currentFrameData.percent;
+      cp.flags.recoveryStartFrame = CurrentGame.frameCounter;
       //debugPrint(String("Player ") + (char)(65 + i)); debugPrintln(String(" recovering! (") + String(cp.currentFrameData.animation, HEX) + String(")"));
     }
     else if (!cp.flags.isLandedOnStage && (cp.flags.isRecovering || cp.flags.isHitOffStage) && isInControl && !isOffStage) {
@@ -753,6 +800,7 @@ void computeStatistics() {
           //debugPrint(String("Player ") + (char)(65 + i)); debugPrintln(" recovered!");
         }
         
+        appendRecovery(true, cp, CurrentGame.frameCounter);
         resetRecoveryFlags(cp.flags);
       }
     }
@@ -763,6 +811,7 @@ void computeStatistics() {
         cp.stats.recoveryAttempts++;
         op.stats.edgeguardChances++;
         op.stats.edgeguardConversions++;
+        appendRecovery(false, cp, CurrentGame.frameCounter);
         //debugPrint(String("Player ") + (char)(65 + i)); debugPrintln(" died recovering!");
       }
       else if (cp.flags.isHitOffStage) {
@@ -828,41 +877,6 @@ void setup() {
 bool sendUdpDebugMessages = true;
 bool sendSerialDebugMessages = true;
 
-void debugPrintMatchParams() {
-  debugPrintln(String("Stage: (") + CurrentGame.stage + String(") ") + String(stages[CurrentGame.stage]));
-  for (int i = 0; i < PLAYER_COUNT; i++) {
-    Player* p = &CurrentGame.players[i];
-    debugPrintln(String("Player ") + (char)(65 + i));
-    debugPrint("Port: "); debugPrintln(String(p->controllerPort + 1, DEC));
-    debugPrintln(String("Character: (") + p->characterId + String(") ") + String(externalCharacterNames[p->characterId]));
-    debugPrintln(String("Color: (") + p->characterColor + String(") ") + String(colors[p->characterColor]));
-  }
-}
-
-void debugPrintGameInfo() {
-  if (CurrentGame.frameCounter % 600 == 0) {
-    debugPrintln(String("Frame: ") + CurrentGame.frameCounter);
-    debugPrintln(String("Frames missed: ") + CurrentGame.framesMissed);
-    debugPrint("Random seed: "); debugPrintln(String(CurrentGame.randomSeed, HEX));
-    for (int i = 0; i < PLAYER_COUNT; i++) {
-      Player* p = &CurrentGame.players[i];
-      PlayerFrameData* pfd = &p->currentFrameData;
-      debugPrintln(String("Player ") + (char)(65 + i));
-      debugPrint("Location X: "); debugPrintln(String(pfd->locationX));
-      debugPrint("Location Y: "); debugPrintln(String(pfd->locationY));
-      debugPrint("Stocks: "); debugPrintln(String(pfd->stocks));
-      debugPrint("Percent: "); debugPrintln(String(pfd->percent));
-      debugPrint("Trigger: "); debugPrintln(String(pfd->trigger));
-      debugPrint("LTrigger: "); debugPrintln(String(pfd->lTrigger));
-      debugPrint("RTrigger: "); debugPrintln(String(pfd->rTrigger));
-      debugPrint("PhysButtons: "); debugPrintln(String(pfd->physicalButtons, BIN));
-//      debugPrint("Buttons: "); debugPrintln(pfd->buttons, BIN);
-//      debugPrint("Joystick: "); debugPrint(pfd->joystickX); debugPrint(","); debugPrintln(pfd->joystickY);
-//      debugPrint("Joystick: "); debugPrint(pfd->cstickX); debugPrint(","); debugPrintln(pfd->cstickY);
-    }
-  }
-}
-
 void debugPrintln(String s) {
    debugPrint(s + String("\r\n"));
 }
@@ -905,12 +919,11 @@ void loop() {
   if (Msg.success) {
     switch (Msg.eventCode) {
       case EVENT_GAME_START:
+        debugPrintln("Game started...");
         handleGameStart();
-        debugPrintMatchParams();
         break;
       case EVENT_UPDATE:
         handleUpdate();
-        //debugPrintGameInfo();
         computeStatistics();
         break;
       case EVENT_GAME_END:
