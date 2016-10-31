@@ -1,8 +1,8 @@
 #include <SPI.h>
 #include <Ethernet.h>
-#include <EEPROM.h>
 #include <EthernetUdp.h>
 #include <ArduinoJson.h>
+#include <EEPROM.h>
 
 #include "SSI3DMASlave.h"
 #include "enhmelee.h"
@@ -160,15 +160,19 @@ void handleUpdate() {
   }
 }
 
-void handleGameEnd() {
+bool handleGameEnd() {
   uint8_t* data = Msg.data;
   int idx = 0;
   
   CurrentGame.winCondition = readByte(data, idx);
   
+  bool monitoredSinceStart = gameInProgress;
+  
   // Clear flags used to control when connection attempts are made
   gameInProgress = false;
   connectAttempted = false;
+  
+  return monitoredSinceStart;
 }
 
 //**********************************************************************
@@ -683,6 +687,7 @@ void computeStatistics() {
       if (frames > cp.stats.mostTimeString) cp.stats.mostTimeString = frames;
       if (hits > cp.stats.mostHitsString) cp.stats.mostHitsString = hits;
 
+      
       //debugPrint(String("Player ") + (char)(65 + i)); debugPrintln(String(" combo ended. (") + percent + String("%, ") + hits + String(" hits, ") + frames + String(" frames)"));
       
       //Reset string count
@@ -909,8 +914,8 @@ void loop() {
         computeStatistics();
         break;
       case EVENT_GAME_END:
-        handleGameEnd();
-        unshiftCurrentGame();
+        bool monitoredSinceStart = handleGameEnd();
+        if (monitoredSinceStart) unshiftCurrentGame();
         break;
     }
   }
