@@ -28,6 +28,7 @@ void asmEventsInitialize() {
 //*                          Global Variables
 //**********************************************************************
 bool connectAttempted = false;
+char debugStrBuf[1024];
 
 //**********************************************************************
 //*               SPI Slave Communication Functions
@@ -189,11 +190,12 @@ bool handleGameEnd() {
 
 #define EEPROM_SCHEMA 0x1
 
-#define GAME_BUFFER_COUNT 3
+#define GAME_BUFFER_COUNT 2
 
 //MAC address. This address will be overwritten by MAC configured in USERREG0 and USERREG1 during ethernet initialization
 byte mac[] = { 0x00, 0x1A, 0xB6, 0x02, 0xF5, 0x8C };
 //byte mac[] = { 0x00, 0x1A, 0xB6, 0x02, 0xFA, 0xF8 };
+char macString[20];
 
 Game completedGamesBuffer[GAME_BUFFER_COUNT];
 
@@ -207,183 +209,45 @@ EthernetClient client;
 
 int udpPort = 3637;
 IPAddress lastBroadcastIp(192, 168, 0, 4);
+char ipString[20];
+char ipPortString[30];
 int lastBroadcastPort = 0;
 EthernetUDP udp;
 
 bool ethernetInitialized = false;
 
-String ipPortToString(IPAddress ip, int port) {
-  char ipAddressString[30];
-  sprintf(ipAddressString, "%d.%d.%d.%d:%d", ip[0], ip[1], ip[2], ip[3], port);
-  return String(ipAddressString);
+char* ipPortToString(IPAddress ip, int port) {
+  sprintf(ipPortString, "%d.%d.%d.%d:%d", ip[0], ip[1], ip[2], ip[3], port);
+  return ipPortString;
 }
 
-String ipToString(IPAddress ip) {
-  char ipAddressString[20];
-  sprintf(ipAddressString, "%d.%d.%d.%d", ip[0], ip[1], ip[2], ip[3]);
-  return String(ipAddressString);
+char* ipToString(IPAddress ip) {
+  sprintf(ipString, "%d.%d.%d.%d", ip[0], ip[1], ip[2], ip[3]);
+  return ipString;
 }
 
-IPAddress stringToIp(String ipString) {
-  
-}
-
-String macToString() {
-  char macString[20];
+char* macToString() {
   sprintf(macString, "%02X-%02X-%02X-%02X-%02X-%02X", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
-  return String(macString);
+  return macString;
 }
 
 void ethernetInitialize() {
-  debugPrintln("Checking EEPROM Schema");
-  
-  int i = 0;
-  byte schemaRead = EEPROM.read(i++);
-  
-  //Ensure that EEPROM has been written to with the proper schema before reading
-  if (schemaRead == EEPROM_SCHEMA) {
-//    debugPrintln("Loading settings from EEPROM");
-    
-//    //Load target IP address
-//    serverIp[0] = EEPROM.read(i++);
-//    serverIp[1] = EEPROM.read(i++);
-//    serverIp[2] = EEPROM.read(i++);
-//    serverIp[3] = EEPROM.read(i++);
-//    
-//    //Load port
-//    serverPort = EEPROM.read(i++) << 8 | EEPROM.read(i++);
-    
-    //Load debug flags
-//    byte flags = EEPROM.read(i++);
-//    sendUdpDebugMessages = flags & 0x1;
-//    sendSerialDebugMessages = flags & 0x2;
-  }
-  
-  debugPrintln("Getting MAC Address from registers.");
+  sprintf(debugStrBuf, "Getting MAC Address from registers."); debugPrintln();
   loadMacAddress(mac);
-  debugPrintln("Read MAC from registers: " + macToString());
-  
-  debugPrintln("Attempting to obtain IP address from DHCP");
+  sprintf(debugStrBuf, "Read MAC from registers: %s", macToString()); debugPrintln();
+
+  sprintf(debugStrBuf, "Attempting to obtain IP address from DHCP"); debugPrintln();
   
   // start the Ethernet connection:
   if (Ethernet.begin(mac)) {
-    debugPrintln("Obtained IP address: " + ipToString(Ethernet.localIP()));
+    sprintf(debugStrBuf, "Obtained IP address: %s", ipToString(Ethernet.localIP())); debugPrintln();
   } else {
-    debugPrintln("Failed to configure Ethernet using DHCP");
+    sprintf(debugStrBuf, "Failed to configure Ethernet using DHCP"); debugPrintln();
     ethernetInitialized = false;
-  }
-  
-  if (udp.begin(udpPort)) {
-    debugPrintln("Initialized UDP");
-  } else {
-    debugPrintln("Failed to initialize UDP");
-    ethernetInitialized = false;
+    return;
   }
   
   ethernetInitialized = true;
-}
-
-void listenForUdpPacket() {
-  int packetSize = udp.parsePacket();
-  if (packetSize) {
-    if (packetSize > UDP_MAX_PACKET_SIZE) return;
-    
-    //Read UDP packet into buffer
-    char udpPacketBuffer[UDP_MAX_PACKET_SIZE];
-    udp.read(udpPacketBuffer, UDP_MAX_PACKET_SIZE);
-    
-    //Create JSON root from buffer
-    StaticJsonBuffer<UDP_MAX_PACKET_SIZE> jsonReadBuffer;
-    JsonObject& root = jsonReadBuffer.parseObject(udpPacketBuffer);
-    
-    //Parse json for command
-    int command = root["type"];
-    debugPrintln("UDP packet contains command: " + String(command));
-    
-    //Prepare to write response
-    StaticJsonBuffer<2048> jsonWriteBuffer;
-    JsonObject& resp = jsonWriteBuffer.createObject();
-    
-    //TODO: Test what happens when a UDP message is sent that doesn't contain a type node
-    byte ip1, ip2, ip3, ip4;
-    int receivedPort;
-    
-    //Handle command received
-    switch(command) {
-      case MSG_TYPE_DISCOVERY:
-        //Get IP and port of the UDP sender
-        lastBroadcastIp = udp.remoteIP();
-        lastBroadcastPort = udp.remotePort();
-        debugPrintln("Received UDP packet from: " + ipPortToString(lastBroadcastIp, lastBroadcastPort));
-    
-        debugPrintln("Responding to discovery request. " + macToString());
-        //Add command and mac elements to JSON
-        resp["type"] = MSG_TYPE_DISCOVERY;
-        resp["mac"] = macToString();
-//        resp["targetIp"] = ipToString(serverIp);
-//        resp["targetPort"] = serverPort;
-//        resp["debugSerial"] = sendSerialDebugMessages;
-//        resp["debugUdp"] = sendUdpDebugMessages;
-
-        debugPrintln("Writing UDP message...");
-        //Send udp packet back
-        udp.beginPacket(lastBroadcastIp, lastBroadcastPort);
-        char buffer[2048];
-        resp.printTo(buffer, sizeof(buffer));
-        udp.write(buffer);
-        udp.endPacket();
-        
-        debugPrintln("Discovery message written.");
-        
-        break;
-      case MSG_TYPE_SET_TARGET:
-        debugPrintln("Received request to change IP/Port of target server.");
-        
-//        String targetIpString = root["targetIp"];
-//        int targetPort = root["targetPort"];
-//        sendSerialDebugMessages = root["debugSerial"];
-//        sendUdpDebugMessages = root["debugUdp"];
-//        ip1 = root["ip1"];
-//        ip2 = root["ip2"];
-//        ip3 = root["ip3"];
-//        ip4 = root["ip4"];
-//        receivedPort = root["port"];
-//        
-//        //If IP or port as changed, disconnect client
-//        if (ip1 != serverIp[0] || ip2 != serverIp[1] || ip3 != serverIp[2] || ip4 != serverIp[3] || receivedPort != serverPort) {
-//          debugPrintln("Change to IP or port requested.");
-//          serverIp[0] = ip1;
-//          serverIp[1] = ip2;
-//          serverIp[2] = ip3;
-//          serverIp[3] = ip4;
-//          serverPort = receivedPort;
-//          
-//          debugPrintln("Disconnecting from old client.");
-//          client.stop();
-//          
-//          //Reset connection timer to allow instant connection attempt
-//          timeOfLastFailedConnection = 0;
-//          
-//          //Write new settings to EEPROM
-//          debugPrintln("Writing new IP settings to EEPROM");
-//          int i = 0;
-//          EEPROM.write(i++, EEPROM_SCHEMA);
-//          EEPROM.write(i++, ip1);
-//          EEPROM.write(i++, ip2);
-//          EEPROM.write(i++, ip3);
-//          EEPROM.write(i++, ip4);
-//          EEPROM.write(i++, receivedPort >> 8 & 0xFF);
-//          EEPROM.write(i++, receivedPort & 0xFF);
-//        }
-        
-        break;
-      case MSG_TYPE_FLASH_ERASE:
-        debugPrintln("Erasing flash.");
-        delay(200);
-        eraseFlash();
-        debugPrintln("Flash should be erased and program should be restarted. This message should not show up.");
-    }     
-  }
 }
 
 void unshiftCurrentGame() {
@@ -405,7 +269,7 @@ void clearGamesBuffer() {
 void handlePostResponse() {
   if (!client.connected()) {
     // If we have lost connection, let's just reset state
-    debugPrintln("Lost connection waiting for response.");
+    sprintf(debugStrBuf, "Lost connection waiting for response."); debugPrintln();
     didSendPost = false;
     client.stop();
     return;
@@ -414,7 +278,7 @@ void handlePostResponse() {
   // If we are connected, let's first check if we've timed out
   long currentTime = millis();
   if (currentTime - timeSentPost > WAIT_FOR_RESPONSE_MS) {
-    debugPrintln("Timed out waiting for response.");
+    sprintf(debugStrBuf, "Timed out waiting for response."); debugPrintln();
     didSendPost = false;
     client.stop();
     return;
@@ -422,7 +286,7 @@ void handlePostResponse() {
   
   // If we received something from the server, let's just for now assume it was successful
   if (client.available()) {
-    debugPrintln("Received response from server!");
+    sprintf(debugStrBuf, "Received response from server!"); debugPrintln();
     
     clearGamesBuffer();
     didSendPost = false;
@@ -450,13 +314,15 @@ void writeOutGames() {
   if (gameInProgress || connectAttempted) {
     return;
   }
+
+  client.stop();
   
   char outBuf[64];
   connectAttempted = true;
   long connectTime = millis();
   if (client.connect(serverName, serverPort)) {
     long successTime = millis();
-    debugPrintln("Connected! Took " + String(successTime - connectTime) + " ms. Writing games...");
+    sprintf(debugStrBuf, "Connected! Took %d ms. Writing games...", successTime - connectTime); debugPrintln();
     
     // send the header
     sprintf(outBuf,"POST %s HTTP/1.1", page);
@@ -471,17 +337,12 @@ void writeOutGames() {
     didSendPost = true;
   } else {
     long failTime = millis();
-     debugPrintln(
-       "Failed to connect to " + String(serverName) + " on port " + 
-       String(serverPort) + ". Took " + String(failTime - connectTime) + " ms."
-     );
+    sprintf(debugStrBuf, "Failed to connect to %s on port %d. Took %d ms.", serverName, serverPort, failTime - connectTime); debugPrintln();
   }
 }
 
 //This is the function that should be called every loop of the application
 int ethernetExecute() {
-  listenForUdpPacket();
-  
   Ethernet.maintain();
   return 1;
 }
@@ -514,7 +375,6 @@ void printGameSummaries() {
     
     JsonArray& data = game.createNestedArray("players");
     for (int i = 0; i < PLAYER_COUNT; i++) {
-      //debugPrintln(String("Writing out player ") + i);
       Player& currentPlayer = kGame.players[i];
       PlayerStatistics& ps = currentPlayer.stats;
       JsonObject& item = jsonBuffer.createObject();
@@ -532,45 +392,26 @@ void printGameSummaries() {
       item["percentTimeClosestCenter"] = 100 * (ps.framesClosestCenter / totalActiveGameFrames);
       item["percentTimeAboveOthers"] = 100 * (ps.framesAboveOthers / totalActiveGameFrames);
       item["percentTimeInShield"] = 100 * (ps.framesInShield / totalActiveGameFrames);
-      item["secondsWithoutDamage"] = float(ps.mostFramesWithoutDamage) / 60;
+      item["framesWithoutDamage"] = ps.mostFramesWithoutDamage;
 
       item["rollCount"] = ps.rollCount;
       item["spotDodgeCount"] = ps.spotDodgeCount;
       item["airDodgeCount"] = ps.airDodgeCount;
       
-      item["recoveryAttempts"] = ps.recoveryAttempts;
-      item["successfulRecoveries"] = ps.successfulRecoveries;
-      item["edgeguardChances"] = ps.edgeguardChances;
-      item["edgeguardConversions"] = ps.edgeguardConversions;
-      
-      //Combo string stuff
-      item["numberOfOpenings"] = ps.numberOfOpenings;
-      item["averageDamagePerString"] = ps.averageDamagePerString;
-      item["averageTimePerString"] = ps.averageTimePerString;
-      item["averageHitsPerString"] = ps.averageHitsPerString;
-      item["mostDamageString"] = ps.mostDamageString;
-      item["mostTimeString"] = ps.mostTimeString;
-      item["mostHitsString"] = ps.mostHitsString;
-      
       JsonArray& stocks = item.createNestedArray("stocks");
       for (int j = 0; j < STOCK_COUNT; j++) {
-        //debugPrintln(String("Writing out player ") + i + String(". Stock: ") + j);
         StockStatistics& ss = ps.stocks[j];
         
         //Only log the stock if the player actually played that stock
-        if (ss.isStockUsed) {
-          //debugPrintln("Stock used.");
+        if (ss.frameStart > 0 || j == 0) {
           JsonObject& stock = jsonBuffer.createObject();
-        
-          uint32_t stockFrames = ss.frame;
-          if (j > 0) stockFrames -= ps.stocks[j - 1].frame;
           
-          stock["timeSeconds"] = float(stockFrames) / 60; 
+          stock["frameStart"] = ss.frameStart;
+          stock["frameEnd"] = ss.frameEnd; 
           stock["percent"] = ss.percent;
           stock["moveLastHitBy"] = ss.lastHitBy;
           stock["lastAnimation"] = ss.lastAnimation;
           stock["openingsAllowed"] = ss.killedInOpenings;
-          stock["isStockLost"] = ss.isStockLost;
         
           stocks.add(stock);
         }
@@ -619,13 +460,13 @@ void printGameSummaries() {
   }
 
   char outBuf[64];
-  int length = root.measureLength();
-  debugPrintln("Length is " + String(length));
-  sprintf(outBuf, "Content-Length: %u\r\n", length);
+  int contentLength = root.measureLength();
+  sprintf(debugStrBuf, "Length is %u", contentLength); debugPrintln();
+  sprintf(outBuf, "Content-Length: %u\r\n", contentLength);
   client.println(outBuf);
   root.printTo(client);
   client.println();
-  debugPrintln("Done printing");
+  sprintf(debugStrBuf, "Done printing"); debugPrintln();
 }
 
 //**********************************************************************
@@ -698,7 +539,6 @@ void computeStatistics() {
         cp.flags.stringStartPercent = op.previousFrameData.percent;
         cp.flags.stringStartFrame = CurrentGame.frameCounter;
         cp.stats.numberOfOpenings++;
-        //debugPrint(String("Player ") + (char)(65 + i)); debugPrintln(" got an opening!");
       }
       
       cp.flags.stringCount++; //increment number of hits
@@ -710,30 +550,16 @@ void computeStatistics() {
 
     //Mark combo completed if opponent lost his stock or if the counter is greater than threshold frames
     if (cp.flags.stringCount > 0 && (opntLostStock || lostStock || cp.flags.stringResetCounter > COMBO_STRING_TIMEOUT)) {
-      //Store records
-      float percent = op.previousFrameData.percent - cp.flags.stringStartPercent;
-      uint32_t frames = CurrentGame.frameCounter - cp.flags.stringStartFrame;
-      uint16_t hits = cp.flags.stringCount;
-      
-      cp.stats.averageDamagePerString = ((cp.stats.numberOfOpenings - 1)*cp.stats.averageDamagePerString + percent) / cp.stats.numberOfOpenings;
-      cp.stats.averageTimePerString = ((cp.stats.numberOfOpenings - 1)*cp.stats.averageTimePerString + frames) / cp.stats.numberOfOpenings;
-      cp.stats.averageHitsPerString = ((cp.stats.numberOfOpenings - 1)*cp.stats.averageHitsPerString + hits) / cp.stats.numberOfOpenings;
-      
-      if (percent > cp.stats.mostDamageString) cp.stats.mostDamageString = percent;
-      if (frames > cp.stats.mostTimeString) cp.stats.mostTimeString = frames;
-      if (hits > cp.stats.mostHitsString) cp.stats.mostHitsString = hits;
-
       ComboString& cs = cp.stats.comboStrings[cp.stats.comboStringIndex];
       cs.frameStart = cp.flags.stringStartFrame;
       cs.frameEnd = CurrentGame.frameCounter;
       cs.percentStart = cp.flags.stringStartPercent;
       cs.percentEnd = op.previousFrameData.percent;
-      cs.hitCount = hits;
+      cs.hitCount = cp.flags.stringCount;
       
       if (cp.stats.comboStringIndex < COMBO_STRING_BUFFER_SIZE - 1) {
          cp.stats.comboStringIndex++;
       }
-      //debugPrint(String("Player ") + (char)(65 + i)); debugPrintln(String(" combo ended. (") + percent + String("%, ") + hits + String(" hits, ") + frames + String(" frames)"));
       
       //Reset string count
       cp.flags.stringCount = 0;
@@ -768,19 +594,16 @@ void computeStatistics() {
     if (!cp.flags.isRecovering && !cp.flags.isHitOffStage && beingDamaged && isOffStage) {
       //If player took a hit off stage
       cp.flags.isHitOffStage = true;
-      //debugPrint(String("Player ") + (char)(65 + i)); debugPrintln(String(" off stage! (") + cp.currentFrameData.locationX + String(",") + cp.currentFrameData.locationY + String(")"));
     }
     else if (!cp.flags.isRecovering && cp.flags.isHitOffStage && !beingDamaged && !isDying && isOffStage) {
       //If player exited damage state off stage
       cp.flags.isRecovering = true;
       cp.flags.recoveryStartPercent = cp.currentFrameData.percent;
       cp.flags.recoveryStartFrame = CurrentGame.frameCounter;
-      //debugPrint(String("Player ") + (char)(65 + i)); debugPrintln(String(" recovering! (") + String(cp.currentFrameData.animation, HEX) + String(")"));
     }
     else if (!cp.flags.isLandedOnStage && (cp.flags.isRecovering || cp.flags.isHitOffStage) && isInControl && !isOffStage) {
       //If a player is in control of his character after recovering flag as landed
       cp.flags.isLandedOnStage = true;
-      //debugPrint(String("Player ") + (char)(65 + i)); debugPrintln(" landed!");
     }
     else if (cp.flags.isLandedOnStage && isOffStage) {
       //If player landed but is sent back off stage, continue recovery process
@@ -793,13 +616,6 @@ void computeStatistics() {
       
       //If frame counter while on stage passes threshold, consider it a successful recovery
       if (cp.flags.framesSinceLanding > FRAMES_LANDED_RECOVERY) {
-        if (cp.flags.isRecovering) {
-          cp.stats.recoveryAttempts++;
-          cp.stats.successfulRecoveries++;
-          op.stats.edgeguardChances++;
-          //debugPrint(String("Player ") + (char)(65 + i)); debugPrintln(" recovered!");
-        }
-        
         appendRecovery(true, cp, CurrentGame.frameCounter);
         resetRecoveryFlags(cp.flags);
       }
@@ -808,14 +624,7 @@ void computeStatistics() {
     if ((cp.flags.isRecovering || cp.flags.isHitOffStage) && lostStock) {
       //If player dies while recovering, consider it a failed recovery
       if (cp.flags.isRecovering) {
-        cp.stats.recoveryAttempts++;
-        op.stats.edgeguardChances++;
-        op.stats.edgeguardConversions++;
         appendRecovery(false, cp, CurrentGame.frameCounter);
-        //debugPrint(String("Player ") + (char)(65 + i)); debugPrintln(" died recovering!");
-      }
-      else if (cp.flags.isHitOffStage) {
-        //debugPrint(String("Player ") + (char)(65 + i)); debugPrintln(" died outright!");
       }
       
       resetRecoveryFlags(cp.flags);
@@ -825,8 +634,8 @@ void computeStatistics() {
     int prevStockIndex = STOCK_COUNT - cp.previousFrameData.stocks;
     if (prevStockIndex >= 0 && prevStockIndex < STOCK_COUNT) {
       StockStatistics& s = cp.stats.stocks[prevStockIndex];
-      s.isStockUsed = true;
-      s.frame = CurrentGame.frameCounter;
+      
+      if (s.frameStart == 0) s.frameStart = CurrentGame.frameCounter;
       s.percent = cp.currentFrameData.percent;
       s.lastHitBy = op.currentFrameData.lastMoveHitId; //This will indicate what this player was killed by
       s.lastAnimation = cp.currentFrameData.animation; //What was character doing before death
@@ -838,9 +647,9 @@ void computeStatistics() {
       for (int i = prevStockIndex - 1; i >= 0; i--) prevOpenings += cp.stats.stocks[i].killedInOpenings;
       
       cp.stats.stocks[prevStockIndex].killedInOpenings = op.stats.numberOfOpenings - prevOpenings;
-      cp.stats.stocks[prevStockIndex].isStockLost = true;
-      
-      debugPrint(String("Player ") + (char)(65 + i)); debugPrintln(String(" lost a stock. (") + cp.currentFrameData.animation + String(", ") + cp.previousFrameData.animation + String(")"));
+      cp.stats.stocks[prevStockIndex].frameEnd = CurrentGame.frameCounter;
+
+      sprintf(debugStrBuf, "Player %c lost a stock. (%d, %d)", (char)(65 + i), cp.currentFrameData.animation, cp.previousFrameData.animation); debugPrintln();
     }
   }
 }
@@ -852,57 +661,38 @@ void checkFlashErase() {
   pinMode(PJ_0, INPUT);
   
   if (digitalRead(PJ_0) == HIGH) {
-    debugPrintln("Erasing flash...");
-    eraseFlash(); 
-    debugPrintln("Flash erased?");
+    sprintf(debugStrBuf, "Erasing flash..."); debugPrintln();
+    eraseFlash();
+    sprintf(debugStrBuf, "Flash erased?"); debugPrintln();
   }
 }
 
 void setup() {
   Serial.begin(115200);
-  
-  debugPrintln("Starting initialization.");
+
+  sprintf(debugStrBuf, "Starting initialization."); debugPrintln();
   
   checkFlashErase();
   ethernetInitialize();
   asmEventsInitialize();
   spiSlaveInitialize();
-  
-  debugPrintln("Initialization complete.");
+
+  sprintf(debugStrBuf, "Initialization complete."); debugPrintln();
 }
 
 //**********************************************************************
 //*                             Debug
 //**********************************************************************
-bool sendUdpDebugMessages = true;
 bool sendSerialDebugMessages = true;
 
-void debugPrintln(String s) {
-   debugPrint(s + String("\r\n"));
+void debugPrintln() {
+  sprintf(debugStrBuf, "%s\r\n", debugStrBuf); debugPrint();
 }
 
-void debugPrint(String s) {
+void debugPrint() {
   if (sendSerialDebugMessages) {
     //Print serial message
-    Serial.print(s);
-  }
-  
-  if (sendUdpDebugMessages && ethernetInitialized) {
-    //Prepare to write response
-    int jsonBufSize = s.length() + 50;
-    StaticJsonBuffer<512> jsonWriteBuffer;
-    JsonObject& json = jsonWriteBuffer.createObject();
-  
-    //Populate response JSON
-    json["type"] = MSG_TYPE_LOG_MESSAGE;
-    json["message"] = s;
-    
-    //Write JSON to 
-    udp.beginPacket(lastBroadcastIp, lastBroadcastPort);
-    char buffer[jsonBufSize];
-    json.printTo(buffer, sizeof(buffer));
-    udp.write(buffer);
-    udp.endPacket();
+    Serial.print(debugStrBuf);
   }
 }
 
@@ -919,7 +709,7 @@ void loop() {
   if (Msg.success) {
     switch (Msg.eventCode) {
       case EVENT_GAME_START:
-        debugPrintln("Game started...");
+        sprintf(debugStrBuf, "Game started..."); debugPrintln();
         handleGameStart();
         break;
       case EVENT_UPDATE:
@@ -927,6 +717,7 @@ void loop() {
         computeStatistics();
         break;
       case EVENT_GAME_END:
+        sprintf(debugStrBuf, "Game ended..."); debugPrintln();
         bool monitoredSinceStart = handleGameEnd();
         if (monitoredSinceStart) unshiftCurrentGame();
         break;

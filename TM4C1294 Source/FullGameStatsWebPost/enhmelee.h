@@ -69,13 +69,11 @@ typedef struct {
 } PlayerFlags;
 
 typedef struct {
-	uint32_t frame;
+	uint32_t frameStart;
+  uint32_t frameEnd;
 	float percent;
 	uint8_t lastHitBy;
 	uint16_t lastAnimation;
-  //uint16_t deathAnimation; //to implement
-  bool isStockUsed;
-  bool isStockLost;
   
   //Combo String
   uint16_t killedInOpenings;
@@ -117,23 +115,10 @@ typedef struct {
   uint16_t techRightCount;
   uint16_t techPlaceCount;
   
-  //Recovery
-  uint16_t recoveryAttempts;
-  uint16_t successfulRecoveries;
-  uint16_t edgeguardChances;
-  uint16_t edgeguardConversions;
-  
   //APM
   uint16_t actionCount;
-  
-  //Combo Strings
-  float mostDamageString;
-  uint32_t mostTimeString; //longest amount of frame for a combo string
-  uint16_t mostHitsString; //most amount of hits in a combo string
-  uint16_t numberOfOpenings; //this is the number of time a player started a combo string
-  float averageDamagePerString;
-  float averageTimePerString;
-  float averageHitsPerString;
+
+  uint16_t numberOfOpenings; //this is the number of times a player started a combo string
   
   uint8_t comboStringIndex = 0;
   uint8_t recoveryIndex = 0;
