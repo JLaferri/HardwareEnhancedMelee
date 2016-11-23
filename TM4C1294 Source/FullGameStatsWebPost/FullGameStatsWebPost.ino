@@ -2,7 +2,6 @@
 #include <Ethernet.h>
 #include <EthernetUdp.h>
 #include <ArduinoJson.h>
-#include <EEPROM.h>
 
 #include "SSI3DMASlave.h"
 #include "enhmelee.h"
@@ -188,9 +187,7 @@ bool handleGameEnd() {
 #define MSG_TYPE_LOG_MESSAGE 3
 #define MSG_TYPE_SET_TARGET 4
 
-#define EEPROM_SCHEMA 0x1
-
-#define GAME_BUFFER_COUNT 2
+#define GAME_BUFFER_COUNT 3
 
 //MAC address. This address will be overwritten by MAC configured in USERREG0 and USERREG1 during ethernet initialization
 byte mac[] = { 0x00, 0x1A, 0xB6, 0x02, 0xF5, 0x8C };
@@ -287,6 +284,14 @@ void handlePostResponse() {
   // If we received something from the server, let's just for now assume it was successful
   if (client.available()) {
     sprintf(debugStrBuf, "Received response from server!"); debugPrintln();
+
+    // TODO: Check response error code and don't mark as successful if it's not a 200.
+    // TODO: Turn on/off status LEDs to indicate what went wrong with transfer
+
+    // Debug server response
+//    while (client.available()) {
+//      sprintf(debugStrBuf, "%c", client.read()); debugPrint();
+//    }
     
     clearGamesBuffer();
     didSendPost = false;
