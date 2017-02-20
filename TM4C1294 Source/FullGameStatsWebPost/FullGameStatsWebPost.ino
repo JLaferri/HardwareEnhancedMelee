@@ -196,10 +196,17 @@ char macString[20];
 
 Game completedGamesBuffer[GAME_BUFFER_COUNT];
 
-// The following server information should be defined in serverConfig.h
+//***** The following server information should be defined in serverConfig.h ******
 //char serverName[] = "google.com";
 //int serverPort = 80;
 //char page[] = "/page";
+//
+//#define PARAM_PATH_LENGTH 0
+//
+//char jsonTemplate[] = "{}";
+//char templateParamsPath[PARAM_PATH_LENGTH][10] = {};
+//*********************************************************************************
+
 long timeSentPost = 0;
 bool didSendPost = false;
 EthernetClient client;
@@ -358,10 +365,22 @@ int ethernetExecute() {
 void printGameSummaries() {
   StaticJsonBuffer<20000> jsonBuffer;
   
-  JsonObject& root = jsonBuffer.createObject();
-  root["macAddress"] = macToString();
+  JsonObject& root = jsonBuffer.parseObject(jsonTemplate);
+  JsonVariant iRoot = root;
+  for (int i = 0; i < PARAM_PATH_LENGTH; i++) {
+    char* path = templateParamsPath[i];
+    JsonObject& current = iRoot.as<JsonObject&>();
+    iRoot = current[path];
+  }
+//  JsonObject& requestsRoot = root.containsKey("requests")
+//  JsonObject& paramsRoot = root.containsKey("params") ? root["params"] : root;
+
+  JsonObject& paramsRoot = iRoot.as<JsonObject&>();
+  paramsRoot["macAddress"] = macToString();
+
+//  root.prettyPrintTo(debugStrBuf, sizeof(debugStrBuf)); debugPrintln();
   
-  JsonArray& games = root.createNestedArray("games");
+  JsonArray& games = paramsRoot.createNestedArray("games");
   
   for (int k = (GAME_BUFFER_COUNT - 1); k >= 0; k--) {
     Game& kGame = completedGamesBuffer[k];
