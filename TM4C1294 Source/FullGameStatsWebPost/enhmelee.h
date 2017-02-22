@@ -6,6 +6,7 @@
 #define STOCK_COUNT 4
 #define COMBO_STRING_BUFFER_SIZE 200
 #define RECOVERY_BUFFER_SIZE 100
+#define PUNISH_BUFFER_SIZE 150
 #define MAX_FRAMES 28800
 #define MSG_BUFFER_SIZE 1024
 
@@ -21,6 +22,7 @@
 
 //For statistics
 #define FRAMES_LANDED_RECOVERY 45
+#define FRAMES_LANDED_PUNISH 45
 #define COMBO_STRING_TIMEOUT 45
 
 typedef struct {
@@ -64,7 +66,15 @@ typedef struct {
   uint32_t stringStartFrame = 0;
   uint16_t stringCount = 0;
   uint8_t stringResetCounter = 0;
-  
+
+  //Punishes
+  bool isPunishing = false;
+  uint8_t framesSincePunishReset;
+  float punishStartPercent = 0;
+  uint32_t punishStartFrame = 0;
+  uint16_t punishHitCount = 0;
+
+  //Misc
   uint32_t framesWithoutDamage;
 } PlayerFlags;
 
@@ -96,6 +106,18 @@ typedef struct {
 } Recovery;
 
 typedef struct {
+  uint32_t frameStart;
+  uint32_t frameEnd;
+  float percentStart;
+  float percentEnd;
+  uint16_t hitCount;
+  bool isKill;
+} Punish;
+
+typedef struct {
+  //Internal Character Usage - currenly only used for sheik/zelda detection
+  uint32_t internalCharUsage[33];
+  
   //Positional
   uint32_t framesAboveOthers; //Assuming if you are higher, you are in a worse position
   uint32_t framesClosestCenter; //Assuming if you are closer to center, you are controlling the stage
@@ -122,10 +144,12 @@ typedef struct {
   
   uint8_t comboStringIndex = 0;
   uint8_t recoveryIndex = 0;
+  uint8_t punishIndex = 0;
   
   StockStatistics stocks[STOCK_COUNT];
   ComboString comboStrings[COMBO_STRING_BUFFER_SIZE];
   Recovery recoveries[RECOVERY_BUFFER_SIZE];
+  Punish punishes[PUNISH_BUFFER_SIZE];
 } PlayerStatistics;
 
 typedef struct {
@@ -215,5 +239,25 @@ void resetRecoveryFlags(PlayerFlags& flags) {
   flags.isHitOffStage = false;
   flags.isLandedOnStage = false;
   flags.framesSinceLanding = 0;
+}
+
+void appendPunish(bool isKill, Player& cp, Player& op, uint32_t frameCounter) {
+  Punish& p =  cp.stats.punishes[cp.stats.punishIndex];
+  p.frameStart = cp.flags.punishStartFrame;
+  p.frameEnd = frameCounter;
+  p.percentStart = cp.flags.punishStartPercent;
+  p.percentEnd = op.previousFrameData.percent;
+  p.hitCount = cp.flags.punishHitCount;
+  p.isKill = isKill;
+  
+  if (cp.stats.punishIndex < PUNISH_BUFFER_SIZE - 1) {
+     cp.stats.punishIndex++;
+  }
+}
+
+void resetPunishFlags(PlayerFlags& flags) {
+  flags.isPunishing = false;
+  flags.framesSincePunishReset = 0;
+  flags.punishHitCount = 0;
 }
 

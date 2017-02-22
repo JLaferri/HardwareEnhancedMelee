@@ -32,3 +32,11 @@
 #define STAGE_BATTLEFIELD 31
 #define STAGE_FD 32
 
+//Internal Character IDs
+#define INTERNAL_ZELDA 0x13
+#define INTERNAL_SHEIK 0x7
+
+//External Character IDs
+#define EXTERNAL_ZELDA 0x12
+#define EXTERNAL_SHEIK 0x13
+

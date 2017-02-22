@@ -187,7 +187,7 @@ bool handleGameEnd() {
 #define MSG_TYPE_LOG_MESSAGE 3
 #define MSG_TYPE_SET_TARGET 4
 
-#define GAME_BUFFER_COUNT 3
+#define GAME_BUFFER_COUNT 2
 
 //MAC address. This address will be overwritten by MAC configured in USERREG0 and USERREG1 during ethernet initialization
 byte mac[] = { 0x00, 0x1A, 0xB6, 0x02, 0xF5, 0x8C };
@@ -363,7 +363,7 @@ int ethernetExecute() {
 //*                           JSON
 //**********************************************************************
 void printGameSummaries() {
-  StaticJsonBuffer<20000> jsonBuffer;
+  StaticJsonBuffer<25000> jsonBuffer;
   
   JsonObject& root = jsonBuffer.parseObject(jsonTemplate);
   JsonVariant iRoot = root;
@@ -403,8 +403,17 @@ void printGameSummaries() {
       PlayerStatistics& ps = currentPlayer.stats;
       JsonObject& item = jsonBuffer.createObject();
 
+      // Calculate played character
+      uint8_t playedCharacterId = currentPlayer.characterId;
+      if (playedCharacterId == EXTERNAL_ZELDA || playedCharacterId == EXTERNAL_SHEIK) {
+        uint32_t zeldaFrames = ps.internalCharUsage[INTERNAL_ZELDA];
+        uint32_t sheikFrames = ps.internalCharUsage[INTERNAL_SHEIK];
+
+        playedCharacterId = zeldaFrames > sheikFrames ? EXTERNAL_ZELDA : EXTERNAL_SHEIK;
+      }
+      
       item["port"] = currentPlayer.controllerPort + 1;
-      item["character"] = currentPlayer.characterId;
+      item["character"] = playedCharacterId;
       item["color"] = currentPlayer.characterColor;
       item["playerType"] = currentPlayer.playerType;
       
@@ -475,6 +484,25 @@ void printGameSummaries() {
         recovery["isSuccessful"] = r.isSuccessful;
         
         recoveries.add(recovery);
+      }
+
+      JsonArray& punishes = item.createNestedArray("punishes");
+      for (int j = 0; j < PUNISH_BUFFER_SIZE; j++) {
+        Punish& p = ps.punishes[j];
+       
+        if (p.frameEnd == 0) {
+          break;
+        } 
+        
+        JsonObject& punish = jsonBuffer.createObject();
+        punish["frameStart"] = p.frameStart;
+        punish["frameEnd"] = p.frameEnd;
+        punish["percentStart"] = p.percentStart;
+        punish["percentEnd"] = p.percentEnd;
+        punish["hitCount"] = p.hitCount;
+        punish["isKill"] = p.isKill;
+        
+        punishes.add(punish);
       }
       
       data.add(item);
@@ -548,6 +576,10 @@ void computeStatistics() {
       //If frames without being hit is greater than previous, set new record
       if (cp.flags.framesWithoutDamage > cp.stats.mostFramesWithoutDamage) cp.stats.mostFramesWithoutDamage = cp.flags.framesWithoutDamage; 
     }
+
+    //Modify internal character counter (sheik/zelda detection)
+    uint8_t internalCharId = cp.currentFrameData.internalCharacterId;
+    cp.stats.internalCharUsage[internalCharId]++;
     
     //------------------------------- Monitor Combo Strings -----------------------------------------
     bool opntTookDamage = op.currentFrameData.percent - op.previousFrameData.percent > 0;
@@ -562,7 +594,6 @@ void computeStatistics() {
       if (cp.flags.stringCount == 0) {
         cp.flags.stringStartPercent = op.previousFrameData.percent;
         cp.flags.stringStartFrame = CurrentGame.frameCounter;
-        cp.stats.numberOfOpenings++;
       }
       
       cp.flags.stringCount++; //increment number of hits
@@ -652,6 +683,48 @@ void computeStatistics() {
       }
       
       resetRecoveryFlags(cp.flags);
+    }
+
+    //----------------------------- Punish detection --------------------------------------------------
+    bool opntInControl = op.currentFrameData.animation >= GROUNDED_CONTROL_START && op.currentFrameData.animation <= GROUNDED_CONTROL_END;
+    
+    if (opntTookDamage && (opntDamagedState || opntGrabbedState)) {
+      // Successfully hit opponent, check if we already have a punish going
+      if (!cp.flags.isPunishing) {
+        // If we didn't have a punish going, start a new one 
+        cp.flags.punishStartPercent = op.previousFrameData.percent;
+        cp.flags.punishStartFrame = CurrentGame.frameCounter;
+        cp.stats.numberOfOpenings++;
+        cp.flags.isPunishing = true;
+      }
+
+      cp.flags.punishHitCount++; //increment number of hits
+    }
+
+    if (opntDamagedState || opntGrabbedState) {
+      // If opponent got grabbed or damaged, reset the punish reset counter
+      cp.flags.framesSincePunishReset = 0; //reset the punish reset timer
+    }
+
+    bool startNeutralCount = cp.flags.framesSincePunishReset == 0 && opntInControl;
+    bool continueNeutralCount = cp.flags.framesSincePunishReset > 0;
+    if (startNeutralCount || continueNeutralCount) {
+      // This will increment the reset timer under the following conditions:
+      // 1) if we were punishing opponent but they have now entered an actionable state
+      // 2) if counter has already started counting meaning opponent has entered actionable state
+      cp.flags.framesSincePunishReset++;
+    }
+
+    // Termination condition 1 - we kill our opponent
+    if (cp.flags.isPunishing && opntLostStock) {
+      appendPunish(true, cp, op, CurrentGame.frameCounter);
+      resetPunishFlags(cp.flags);
+    }
+
+    // Termination condition 2 - we have not re-hit our opponent in buffer amount
+    if (cp.flags.isPunishing && cp.flags.framesSincePunishReset > FRAMES_LANDED_PUNISH) {
+      appendPunish(false, cp, op, CurrentGame.frameCounter);
+      resetPunishFlags(cp.flags);
     }
     
     //-------------------------- Stock specific stuff -------------------------------------------------
