@@ -180,7 +180,7 @@ bool handleGameEnd() {
 //**********************************************************************
 #define UDP_MAX_PACKET_SIZE 1024
 #define RECONNECT_TIME_MS 15000
-#define WAIT_FOR_RESPONSE_MS 20000
+#define WAIT_FOR_RESPONSE_MS 15000
 
 #define MSG_TYPE_DISCOVERY 1
 #define MSG_TYPE_FLASH_ERASE 2
@@ -210,6 +210,7 @@ Game completedGamesBuffer[GAME_BUFFER_COUNT];
 long timeSentPost = 0;
 bool didSendPost = false;
 EthernetClient client;
+IPAddress myIp(194, 0, 0, 2);
 
 int udpPort = 3637;
 IPAddress lastBroadcastIp(192, 168, 0, 4);
@@ -243,6 +244,7 @@ void ethernetInitialize() {
   sprintf(debugStrBuf, "Attempting to obtain IP address from DHCP"); debugPrintln();
   
   // start the Ethernet connection:
+//  Ethernet.begin(mac, myIp);
   if (Ethernet.begin(mac)) {
     sprintf(debugStrBuf, "Obtained IP address: %s", ipToString(Ethernet.localIP())); debugPrintln();
   } else {
@@ -363,7 +365,7 @@ int ethernetExecute() {
 //*                           JSON
 //**********************************************************************
 void printGameSummaries() {
-  StaticJsonBuffer<25000> jsonBuffer;
+  StaticJsonBuffer<30000> jsonBuffer;
   
   JsonObject& root = jsonBuffer.parseObject(jsonTemplate);
   JsonVariant iRoot = root;
